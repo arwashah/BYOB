@@ -282,8 +282,9 @@ export function fakeNudge(daysWorked: number[], fundWeeks: number, name?: string
     message: name ? `${name}, ${text}` : text[0].toUpperCase() + text.slice(1),
     weeksOffCovered: fundWeeks,
     reasons: severity === "none" ? [] : [`${streak} weeks in a row with 6+ working days`],
-    resources: [],
-    disclaimer: "Not medical advice.",
+    // same list and wording as api/nudge.py
+    resources: [{ name: "211 Ontario", detail: "Call 211 or visit 211ontario.ca to find local mental health services" }],
+    disclaimer: "Not medical advice. If you're struggling, reach out to the resources listed.",
   };
 }
 
