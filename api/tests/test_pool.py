@@ -61,6 +61,23 @@ def test_reserve_floor_protects_pool():
     assert pool.pool_health(p)["status"] == "low"
 
 
+def test_what_if_three_claims_at_once():
+    r = pool.what_if(fresh(), 3, 2000)
+    assert r["gifts"] == [2000, 2000, 1680]
+    assert r["claims_fully_covered"] == 2
+    assert not r["survives"]
+    assert r["balance_after"] >= pool.RESERVE_FLOOR
+
+
+def test_joined_user_passes_wait_but_new_user_does_not():
+    p = fresh()
+    judge = pool.add_member(p, "Sam", "Courier", today=DEMO_DAY)
+    newbie = pool.add_member(p, "Sam", "Courier", is_new=True, today=DEMO_DAY)
+    assert judge["id"] == "sam" and newbie["id"] == "sam-2"
+    assert pool.evaluate_request(p, "sam", 500, today=DEMO_DAY)["decision"] == "approved"
+    assert pool.evaluate_request(p, "sam-2", 500, today=DEMO_DAY)["decision"] == "denied"
+
+
 def test_api_flow_and_reset():
     app = FastAPI()
     app.include_router(pool.router)

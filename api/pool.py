@@ -1,23 +1,26 @@
-"""Mutual aid pool (Broodfonds-style) for Backstop.
+"""Mutual aid pool (Broodfonds-style) for BYOB.
 
 Hackathon version: members and money are synthetic and live in memory, seeded
-from data/pool.json. The support rules are real, so the demo can explain every
-decision. This is mutual aid, not insurance: support is at the pool's
-discretion and never guaranteed.
+from data/pool.json. The pot below stands in for what the group has pledged;
+no real money moves. The support rules are real, so the demo can explain every
+decision. This is mutual aid, not insurance: gifts are pledged by members,
+capped, and never guaranteed.
 
 Endpoints (include with app.include_router(pool.router) in main.py):
-  GET  /pool          pool balance, health, members, recent ledger
-  POST /pool/request  ask the pool for support; approved amounts are paid out
+  GET  /pool          what the group has pledged, health, members, recent gifts
+  POST /pool/join     add the current user to the group (demo)
+  POST /pool/request  ask the group for a gift; approved amounts are recorded
+  GET  /pool/whatif   can the group cope with several claims at once?
   POST /pool/reset    reload the seed data (demo only)
 """
-import copy
 import json
+import re
 import threading
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 SEED_FILE = Path(__file__).parent / "data" / "pool.json"
@@ -130,6 +133,43 @@ def apply_payout(pool: dict, member_id: str, amount: int, note: str,
     return entry
 
 
+def what_if(pool: dict, n_claims: int, amount: int = 2000) -> dict:
+    """Stress test: n members each ask for `amount` at the same time."""
+    sim_balance = pool["balance"]
+    gifts = []
+    for _ in range(n_claims):
+        gift = min(amount, max_payout({"balance": sim_balance}))
+        gifts.append(gift)
+        sim_balance -= gift
+    covered = sum(1 for g in gifts if g == amount)
+    return {
+        "claims": n_claims,
+        "amount_each": amount,
+        "gifts": gifts,
+        "claims_fully_covered": covered,
+        "total_gifted": sum(gifts),
+        "balance_after": sim_balance,
+        "survives": covered == n_claims,
+        "message": (f"The group can fully support {covered} of {n_claims} simultaneous claims "
+                    f"and still keeps ${sim_balance:,} in reserve."),
+    }
+
+
+def add_member(pool: dict, name: str, trade: str, is_new: bool = False,
+               today: Optional[date] = None) -> dict:
+    """Add the current user. Existing-member joins backdate past the waiting period."""
+    today = today or date.today()
+    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "member"
+    member_id, n = base, 2
+    while find_member(pool, member_id):
+        member_id, n = f"{base}-{n}", n + 1
+    joined = today if is_new else today - timedelta(days=WAITING_PERIOD_DAYS + 30)
+    member = {"id": member_id, "first_name": name, "trade": trade,
+              "joined": joined.isoformat(), "active": True}
+    pool["members"].append(member)
+    return member
+
+
 def public_view(pool: dict) -> dict:
     """What the dashboard shows. Members see only first names and trades of others."""
     names = {m["id"]: m["first_name"] for m in pool["members"]}
@@ -147,7 +187,8 @@ def public_view(pool: dict) -> dict:
             "max_share_of_balance": SHARE_CAP,
             "reserve_floor": RESERVE_FLOOR,
         },
-        "disclaimer": "Mutual aid, not insurance. Support is at the pool's discretion.",
+        "disclaimer": ("Mutual aid, not insurance. Your group has pledged up to "
+                       f"${HARD_CAP:,} per claim; gifts are capped, voluntary and never guaranteed."),
     }
 
 
@@ -160,6 +201,12 @@ class SupportRequest(BaseModel):
     uncovered_gap: Optional[int] = Field(None, ge=0, description="Cost left after insurance, from /claim")
 
 
+class JoinRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    trade: str = Field(min_length=1, max_length=40)
+    is_new: bool = Field(False, description="True to demo the 3-month waiting period")
+
+
 router = APIRouter(prefix="/pool", tags=["pool"])
 
 
@@ -167,6 +214,19 @@ router = APIRouter(prefix="/pool", tags=["pool"])
 def get_pool():
     with _lock:
         return public_view(_pool)
+
+
+@router.post("/join")
+def join_pool(req: JoinRequest):
+    with _lock:
+        member = add_member(_pool, req.name.strip(), req.trade.strip(), req.is_new)
+        return {"member": member, "pool": public_view(_pool)}
+
+
+@router.get("/whatif")
+def whatif(claims: int = Query(3, ge=1, le=10), amount: int = Query(2000, gt=0, le=HARD_CAP)):
+    with _lock:
+        return what_if(_pool, claims, amount)
 
 
 @router.post("/request")
