@@ -9,6 +9,33 @@ import { textDir } from '@/lib/language';
 import { Badge, Card, Loading, MESSAGES, Page, TONE, button } from '@/components/ui';
 import { IconArrowRight, IconGaps } from '@/components/icons';
 
+// "2026-10-17" -> "Oct 17, 2026". Date-only strings are read as local dates so
+// they don't slip a day in western time zones; anything else is shown as sent.
+function formatChecked(d: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  const date = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(d);
+  return isNaN(date.getTime()) ? d : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// "Source: Canada.ca: EI… · checked Oct 17, 2026", linked when there's a URL.
+function SourceLine({ gap }: { gap: Gap }) {
+  const name = gap.sourceName ?? gap.source;
+  if (!name) return null;
+  return (
+    <p className="mt-3 text-[12px] text-ink-3">
+      Source:{' '}
+      {gap.sourceUrl ? (
+        <a href={gap.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-brand underline decoration-brand/30 underline-offset-2 hover:decoration-brand">
+          {name}
+        </a>
+      ) : (
+        name
+      )}
+      {gap.checkedOn && <> · checked {formatChecked(gap.checkedOn)}</>}
+    </p>
+  );
+}
+
 export default function GapsPage() {
   const profile = useProfile();
   const [gaps, setGaps] = useState<Gap[] | null>(null);
@@ -61,7 +88,7 @@ export default function GapsPage() {
                     ))}
                   </ol>
                 </div>
-                {g.source && <p className="mt-3 text-[12px] text-ink-3">Source: {g.source}</p>}
+                <SourceLine gap={g} />
               </div>
               <span className="sr-only">Gap {i + 1} of {gaps.length}</span>
             </Card>
