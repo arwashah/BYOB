@@ -238,6 +238,7 @@ class AIProfile(BaseModel):
     hasHealthPlan: bool
     eiRegistered: bool
     lifeEvents: list[str]
+    writtenIn: str  # the language the description is written in, e.g. "English", "Urdu"
 
 
 class AIGap(BaseModel):
@@ -342,7 +343,9 @@ def profile(body: ProfileIn):
         "insurance alone counts as no), 'not_sure' if unclear.\n"
         "- hasHealthPlan: true only if they say they have health or dental benefits.\n"
         "- eiRegistered: true only if they say they registered for EI.\n"
-        "- lifeEvents: short words like 'baby', 'caregiving', 'surgery', 'moving' if mentioned.\n\n"
+        "- lifeEvents: short words like 'baby', 'caregiving', 'surgery', 'moving' if mentioned.\n"
+        "- writtenIn: the name in English of the language the description is written in "
+        "(e.g. 'English', 'French', 'Urdu').\n\n"
         f"Description: {body.description}"
     )
     ai = ask(prompt, AIProfile)
@@ -377,7 +380,10 @@ def profile(body: ProfileIn):
         "hasHealthPlan": bool(ai.get("hasHealthPlan")),
         "eiRegistered": bool(ai.get("eiRegistered")),
         "lifeEvents": ai.get("lifeEvents") or [],
-        "language": clean_language(body.language),  # sent back on /gaps and /claim
+        # the user's pick wins; otherwise answer in the language they wrote in (auto-detect)
+        "language": clean_language(
+            body.language if (body.language or "").strip().lower() not in ("", "auto") else ai.get("writtenIn")
+        ),  # sent back on /gaps and /claim
         # daysWorked and repairFundSaved are left out on purpose: the user didn't say them,
         # and the screens let them fill those in.
     }
