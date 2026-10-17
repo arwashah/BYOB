@@ -52,7 +52,7 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [roughMonthly, setRoughMonthly] = useState('');
   const [csvNote, setCsvNote] = useState('');
-  const [language, setLanguage] = useState('English');
+  const [language, setLanguage] = useState('auto');
   const saved = useSavedProfile();
   const [draft, setDraft] = useState<ReturnType<typeof readDraft>>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -77,7 +77,7 @@ export default function OnboardingPage() {
   const pickExample = (key: string) => {
     const ex = EXAMPLES[key];
     setDescription(ex.description);
-    setProfile({ ...structuredClone(ex), language });
+    setProfile({ ...structuredClone(ex), language: language === 'auto' ? 'English' : language });
     setRoughMonthly('');
     setCsvNote(`Using ${ex.name}’s last 12 months of invoices.`);
     setStep(1);
@@ -87,7 +87,7 @@ export default function OnboardingPage() {
     if (!description.trim() || loading) return;
     setLoading(true);
     const p = await api.profile(description, language);
-    setProfile({ ...p, language });
+    setProfile({ ...p, language: language === 'auto' ? p.language ?? 'English' : language });
     setRoughMonthly(String(p.monthlyIncome[0] ?? ''));
     setLoading(false);
     setStep(1);
@@ -117,7 +117,7 @@ export default function OnboardingPage() {
     setDescription(draft.description);
     setProfile(draft.profile);
     setRoughMonthly(draft.roughMonthly);
-    setLanguage(draft.profile.language ?? 'English');
+    setLanguage(draft.profile.language ?? 'auto');
     setStep(draft.step);
   };
 
