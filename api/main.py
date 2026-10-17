@@ -25,11 +25,13 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import claim_plan
 import nudge
 import pool
+import forecast as forecast_maths  # Person 3's forecast.py
 
 HERE = Path(__file__).parent
 load_dotenv(HERE / ".env")  # GEMINI_API_KEY (and optional GEMINI_MODEL)
@@ -42,7 +44,9 @@ MONTHS = ["Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", 
 app = FastAPI(title="BYOB API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    # localhost for testing + the deployed screens (FRONTEND_URL in .env / Render, comma-separated)
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"]
+    + [u.strip().rstrip("/") for u in os.getenv("FRONTEND_URL", "").split(",") if u.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -158,6 +162,7 @@ def ask_gemini(contents, schema):
     plain_config = types.GenerateContentConfig(**settings)
 
     last_err = None
+    hit_quota = []  # models whose free limit is used up
     models = [MODEL]
     tried_backups = False
     while models:
@@ -190,6 +195,11 @@ def ask_gemini(contents, schema):
                 if "404" in text or "NOT_FOUND" in text:
                     print(f"Model {model} not available, skipping")
                     break
+                if "quota" in text.lower() or "RESOURCE_EXHAUSTED" in text or "429" in text:
+                    # free-tier limit for THIS model; each model has its own, so try the next one
+                    hit_quota.append(model)
+                    print(f"Free Gemini limit reached on {model}, trying another model...")
+                    break
                 if not any(sign in text for sign in BUSY_SIGNS):
                     # not a "busy" error (bad key, unreadable file...): retrying won't help
                     raise HTTPException(502, f"Gemini call failed ({model}): {err}")
@@ -199,6 +209,10 @@ def ask_gemini(contents, schema):
             models = [m for m in backup_models() if m != MODEL]
             if models:
                 print(f"{MODEL} is busy, switching to backup: {models[0]}")
+    if hit_quota:
+        raise HTTPException(429, "Free Gemini limit reached on " + ", ".join(hit_quota) +
+                            ". Per-minute limits reset in about a minute; daily limits reset at midnight "
+                            "Pacific time. Use another key or enable billing in AI Studio.")
     raise HTTPException(503, f"Gemini is busy right now, try again in a minute: {last_err}")
 
 
@@ -226,6 +240,7 @@ class AIProfile(BaseModel):
     hasHealthPlan: bool
     eiRegistered: bool
     lifeEvents: list[str]
+    writtenIn: str  # the language the description is written in, e.g. "English", "Urdu"
 
 
 class AIGap(BaseModel):
@@ -235,6 +250,35 @@ class AIGap(BaseModel):
     why: str
     fixes: list[str]
     source: str
+    sourceId: str  # one of the [source: ...] tags in rules.md
+
+
+# Official sources behind rules.md. The AI only picks an id; the link and date come from here,
+# so it can never invent a URL. Update "checked" whenever you re-verify a page.
+SOURCES = {
+    "ontario-esa": {"name": "Ontario: Your guide to the Employment Standards Act",
+                    "url": "https://www.ontario.ca/document/your-guide-employment-standards-act-0/vacation",
+                    "checked": "2026-10-17"},
+    "ei-self-employed": {"name": "Canada.ca: EI special benefits for self-employed people",
+                         "url": "https://www.canada.ca/en/employment-social-development/programs/ei/ei-list/reports/self-employed-special-benefits.html",
+                         "checked": "2026-10-17"},
+    "cpp": {"name": "Canada Revenue Agency: CPP for self-employed workers",
+            "url": "https://www.canada.ca/en/revenue-agency/services/tax/canada-pension-plan-cpp-employment-insurance-ei-rulings/cpp-ei-explained/employees-self-employed-workers-responsibilities-benefits-entitlements.html",
+            "checked": "2026-10-17"},
+    "dental": {"name": "Canada.ca: Canadian Dental Care Plan, do you qualify",
+               "url": "https://www.canada.ca/en/services/benefits/dental/dental-care-plan/qualify.html",
+               "checked": "2026-10-17"},
+    "wsib": {"name": "WSIB: Optional insurance",
+             "url": "https://www.wsib.ca/en/businesses/registration-and-coverage/optional-insurance",
+             "checked": "2026-10-17"},
+    "byob": {"name": "BYOB guidance (general advice, not a government rule)", "url": None,
+             "checked": "2026-10-17"},
+}
+
+
+def with_source(source_id: str) -> dict:
+    src = SOURCES.get((source_id or "").strip()) or SOURCES["byob"]
+    return {"sourceName": src["name"], "sourceUrl": src["url"], "checkedOn": src["checked"]}
 
 
 class AIClause(BaseModel):
@@ -286,17 +330,37 @@ def seasonal_income(yearly: int, busy: list, slow: list) -> list:
     return [round(yearly * w / total) for w in weights]
 
 
+# ---------------------------------------------------------------- languages
+
+def clean_language(lang) -> str:
+    """'French', 'Français', 'fr' ... -> a safe language name for the prompt (default English)."""
+    lang = re.sub(r"[^\w\s()-]", "", str(lang or "")).strip()
+    lang = " ".join(lang.split()[:2])[:25]  # a language name, not instructions
+    return lang or "English"
+
+
+def language_rule(lang: str) -> str:
+    """One prompt line so the user reads answers in their own language."""
+    if lang.lower() in ("english", "en", "anglais"):
+        return ""
+    return (f"\nLANGUAGE: write every sentence meant for the user in {lang}. Keep numbers, dollar "
+            "amounts, program names (EI, CPP, Canadian Dental Care Plan, WSIB) and exact quotes from "
+            "documents unchanged.\n")
+
+
 # ---------------------------------------------------------------- /profile
 
 class ProfileIn(BaseModel):
     description: str
+    language: Optional[str] = None  # e.g. "French", "Punjabi"; answers in that language
 
 
 @app.post("/profile")
 def profile(body: ProfileIn):
     """Any user's own description -> their Profile (web/lib/types.ts)."""
     prompt = (
-        "A self-employed person in Canada described their business. Fill in their profile.\n"
+        "A self-employed person in Canada described their business (in any language). "
+        "Fill in their profile, writing the fields in English.\n"
         "Rules:\n"
         "- Use only what they said. Never invent numbers: use null when unknown.\n"
         "- equipment: every tool, machine or vehicle their income depends on. isOnlyOne is true "
@@ -310,7 +374,9 @@ def profile(body: ProfileIn):
         "insurance alone counts as no), 'not_sure' if unclear.\n"
         "- hasHealthPlan: true only if they say they have health or dental benefits.\n"
         "- eiRegistered: true only if they say they registered for EI.\n"
-        "- lifeEvents: short words like 'baby', 'caregiving', 'surgery', 'moving' if mentioned.\n\n"
+        "- lifeEvents: short words like 'baby', 'caregiving', 'surgery', 'moving' if mentioned.\n"
+        "- writtenIn: the name in English of the language the description is written in "
+        "(e.g. 'English', 'French', 'Urdu').\n\n"
         f"Description: {body.description}"
     )
     ai = ask(prompt, AIProfile)
@@ -345,63 +411,26 @@ def profile(body: ProfileIn):
         "hasHealthPlan": bool(ai.get("hasHealthPlan")),
         "eiRegistered": bool(ai.get("eiRegistered")),
         "lifeEvents": ai.get("lifeEvents") or [],
+        # the user's pick wins; otherwise answer in the language they wrote in (auto-detect)
+        "language": clean_language(
+            body.language if (body.language or "").strip().lower() not in ("", "auto") else ai.get("writtenIn")
+        ),  # sent back on /gaps and /claim
         # daysWorked and repairFundSaved are left out on purpose: the user didn't say them,
         # and the screens let them fill those in.
     }
 
 
 # ---------------------------------------------------------------- /forecast
-# Plain maths, same rules as web/lib/fake.ts so the numbers match offline mode.
-# Arwa: if you write a better version, replace compute_forecast and keep the output keys.
-
-def equipment_risk(e: dict) -> dict:
-    age, repairs = money(e.get("ageYears")), money(e.get("repairs"))
-    only_one = e.get("isOnlyOne", True)
-    score = min(100, round(age / 10 * 50 + repairs * 15 + (20 if only_one else 0)))
-    level = "high" if score >= 70 else "medium" if score >= 40 else "low"
-    months = {"high": 24, "medium": 48, "low": 96}[level]
-    reason = ", ".join([
-        f"{age} years old",
-        f"{repairs} repair{'' if repairs == 1 else 's'}",
-        "your only one" if only_one else "you have a backup",
-    ])
-    return {
-        "name": e.get("name", "Equipment"),
-        "score": score,
-        "level": level,
-        "reason": reason,
-        "monthlySetAside": round(money(e.get("replacementCost")) / months),
-    }
-
+# The maths lives in Arwa's forecast.py (Person 3). We only add the pool's biggest gift.
 
 def compute_forecast(p: dict) -> dict:
-    income = [money(v) for v in p.get("monthlyIncome") or []]
-    if len(income) != 12:
-        income = [income[0] if income else 0] * 12
-    average = round(sum(income) / 12)
-    months = [{"label": MONTHS[i], "income": v} for i, v in enumerate(income)]
-    equipment = sorted((equipment_risk(e) for e in p.get("equipment") or []),
-                       key=lambda r: r["score"], reverse=True)
-    time_off = round(average * TIME_OFF_RATE)
-    weekly_income = average * 12 / 52 or 1
     with pool._lock:
         biggest_gift = pool.max_payout(pool._pool)
-    return {
-        "months": months,
-        "average": average,
-        "leanMonths": [m["label"] for m in months if m["income"] < average * 0.85],
-        "timeOffMonthly": time_off,
-        "repairFundMonthly": sum(r["monthlySetAside"] for r in equipment if r["level"] != "low"),
-        "equipment": equipment,
-        "weeksCoveredBefore": 0,
-        # a year of 4% savings plus the biggest gift the group can give right now
-        "weeksCoveredAfter": round((time_off * 12 + biggest_gift) / weekly_income, 1),
-        "timeOffWeeks": round(time_off * 12 / weekly_income, 1),
-    }
+    return forecast_maths.compute_forecast(p, biggest_gift=biggest_gift)
 
 
 @app.post("/forecast")
-def forecast(p: dict):
+def forecast_route(p: dict):
     return compute_forecast(p)
 
 
@@ -424,9 +453,12 @@ def gaps(p: dict):
         "- fixes: 2-3 concrete actions, cheapest or most urgent first; use the dollar amounts in "
         "NUMBERS where they fit; never tell them to buy a specific product\n"
         "- source: the rule you used, short (e.g. 'Ontario ESA: 4% vacation pay')\n"
+        "- sourceId: the [source: ...] tag of the RULES section that rule comes from, exactly as "
+        "written (one of: " + ", ".join(SOURCES) + ")\n"
         "Always include time off / sick income. Flag EI as high if they are not registered and "
         "have a life event coming. Flag equipment rated 'high' in NUMBERS. Flag insurance if it is "
         "'no' or 'not_sure', and health/dental if hasHealthPlan is false.\n\n"
+        f"{language_rule(clean_language(p.get('language')))}"
         f"RULES:\n{RULES}\n\nPERSON:\n{json.dumps(person)}\n\nNUMBERS:\n{json.dumps(numbers)}"
     )
     result = ask(prompt, list[AIGap])
@@ -440,6 +472,7 @@ def gaps(p: dict):
             "why": g.get("why", ""),
             "fixes": g.get("fixes") or [],
             "source": g.get("source") or None,
+            **with_source(g.get("sourceId")),  # sourceName, sourceUrl, checkedOn
         })
     return sorted(out, key=lambda g: rank[g["severity"]])
 
@@ -452,6 +485,7 @@ async def claim(
     profile: str = Form("{}"),
     item: str = Form("equipment"),
     repair_cost: str = Form("0"),
+    language: str = Form(""),  # or taken from the profile
 ):
     """The user's own policy (PDF or photo) + what broke -> ClaimResult (web/lib/types.ts)."""
     from google.genai import types
@@ -498,6 +532,11 @@ async def claim(
         "Please contact me at [phone/email] with any questions.\\n\\n"
         "Sincerely,\\n<policyholder name>\\n<business name>"
     )
+    lang = clean_language(language or person.get("language"))
+    if language_rule(lang):
+        prompt += language_rule(lang) + (
+            "The claim letter (draft) stays in English, since that's what the insurer reads; "
+            "sourceClauses stay exactly as written in the policy.\n")
     ai = ask([prompt, file_part], AIClaim, file_bytes=data)
 
     insurer_pays = min(money(ai.get("insurerPays")), cost) if cost else money(ai.get("insurerPays"))
@@ -527,6 +566,50 @@ async def claim(
         ],
         "deadline": ai.get("deadline"),
     }
+
+
+HOME_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>byob API</title>
+<style>
+  :root { --green: #2f5a45; --ink: #1d2420; --muted: #66706a; --line: #e4e8e5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f7f8f7;
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); padding: 16px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 36px 32px;
+          max-width: 460px; width: 100%; box-shadow: 0 8px 30px rgba(0,0,0,.05); }
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 700; }
+  .mark { width: 36px; height: 36px; border-radius: 10px; background: var(--green); color: #fff;
+          display: grid; place-items: center; font-size: 18px; }
+  .status { display: inline-flex; align-items: center; gap: 8px; margin: 18px 0 6px; font-size: 14px;
+            color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: __DOT__; }
+  p { line-height: 1.55; color: var(--ink); margin: 14px 0 22px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  a { text-decoration: none; padding: 11px 18px; border-radius: 12px; font-weight: 600; font-size: 15px; }
+  .primary { background: var(--green); color: #fff; }
+  .ghost { border: 1px solid var(--line); color: var(--ink); }
+  small { display: block; margin-top: 26px; color: var(--muted); font-size: 13px; }
+</style></head>
+<body><main class="card">
+  <div class="logo"><span class="mark">&#127793;</span>byob API</div>
+  <div class="status"><span class="dot"></span>__STATUS__</div>
+  <p>The AI behind BYOB (Bring Your Own Benefits): it reads any self-employed person's description
+     and any insurance policy, and answers only from our rules, quoting its sources.</p>
+  <div class="btns"><a class="primary" href="/docs">Try it (docs)</a><a class="ghost" href="/health">Status</a></div>
+  <small>Informs, never sells. Not financial advice.</small>
+</main></body></html>"""
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def home():
+    """Friendly page for anyone who opens the bare server link."""
+    import html
+    key_set = bool(os.getenv("GEMINI_API_KEY"))
+    status = f"Running · {html.escape(MODEL)}" if key_set else "Running · AI key missing"
+    return (HOME_PAGE.replace("__STATUS__", status)
+            .replace("__DOT__", "#2e9e5b" if key_set else "#d08a1f"))
 
 
 @app.get("/health")

@@ -3,7 +3,7 @@
 Pure Python (no AI, no network). Takes a Profile dict (camelCase, same as web/lib/types.ts)
 and returns the Forecast dict the screens expect. Person 2's main.py just calls compute_forecast.
 
-Needs: pip install pandas
+
 """
 import csv
 import io
@@ -114,7 +114,7 @@ def compute_forecast(p: dict, biggest_gift: int = 0) -> dict:
     weekly_income = average * 12 / 52 or 1
     repair_fund = sum(r["monthlySetAside"] for r in equipment if r["level"] != "low")
     time_off_weeks = round(time_off * 12 / weekly_income, 1)
-    saved = whole(p.get("repairFundSaved"))
+
 
     return {
         "months": months,
@@ -125,8 +125,8 @@ def compute_forecast(p: dict, biggest_gift: int = 0) -> dict:
         "repairFundMonthly": repair_fund,
         "totalMonthlySetAside": time_off + repair_fund,
         "equipment": equipment,
-        "weeksCoveredBefore": round(saved / weekly_income, 1),   # what they have today
+        "weeksCoveredBefore": 0,    # what they have today
         # a year of 4% savings plus the biggest gift the group can give right now
-        "weeksCoveredAfter": round((time_off * 12 + saved + biggest_gift) / weekly_income, 1),
+        "weeksCoveredAfter": round((time_off * 12 + biggest_gift) / weekly_income, 1),
         "timeOffWeeks": time_off_weeks,
     }
