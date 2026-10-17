@@ -17,6 +17,7 @@ offline stand-in data, so the demo never shows a blank page.
 import hashlib
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -487,12 +488,27 @@ async def claim(
         "- sourceClauses: the EXACT sentences from the policy you relied on, with their section names\n"
         "- deadline: when the insurer must be notified, or null if the policy doesn't say\n"
         "- draft: a short, polite claim letter the policyholder can send, using the policy's own "
-        "names and numbers; leave [date] and [phone/email] as placeholders"
+        "names and numbers; leave [date] and [phone/email] as placeholders. Format it as a real "
+        "letter with line breaks (\\n) between parts, exactly in this layout:\n"
+        "To: <insurer name>, Claims Department\\n"
+        "Re: <coverage name> claim, Policy <policy number>\\n\\n"
+        "<paragraph: what broke, when ([date]) and where, and the cost>\\n\\n"
+        "<paragraph: which section of the policy applies and the payout they expect>\\n\\n"
+        "Enclosed: <the documents, as one sentence>\\n\\n"
+        "Please contact me at [phone/email] with any questions.\\n\\n"
+        "Sincerely,\\n<policyholder name>\\n<business name>"
     )
     ai = ask([prompt, file_part], AIClaim, file_bytes=data)
 
     insurer_pays = min(money(ai.get("insurerPays")), cost) if cost else money(ai.get("insurerPays"))
-    clauses = [c for c in ai.get("sourceClauses") or [] if c.get("quote")]
+    clauses = [
+        {"section": (c.get("section") or "").strip(),
+         "quote": c["quote"].strip().lstrip("•·-*– ").strip()}  # drop bullet marks copied from the PDF
+        for c in ai.get("sourceClauses") or [] if c.get("quote")
+    ]
+    draft = (ai.get("draft") or "").replace("\\n", "\n").strip()
+    # "Enclosed: Enclosed are our ..." -> "Enclosed: our ..."
+    draft = re.sub(r"Enclosed:\s*(Enclosed|Attached)\s+(are|is|please find)\s+", "Enclosed: ", draft, flags=re.I)
     first = clauses[0] if clauses else None
     return {
         "status": pick(ai.get("status"), {"covered", "partial", "not_covered"}, "partial"),
@@ -502,7 +518,7 @@ async def claim(
         "documents": ai.get("documents") or [],
         "insurerPays": insurer_pays,
         "uncovered": max(0, cost - insurer_pays),
-        "draft": ai.get("draft", ""),
+        "draft": draft,
         "source": f'{first["section"]}: "{first["quote"]}"' if first else None,
         "sourceClauses": clauses,
         "calculation": [
