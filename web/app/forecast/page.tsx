@@ -1,13 +1,129 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { downloadReminder, useAutoSave } from '@/lib/autoSave';
 import { useLive } from '@/lib/useLive';
 import { useProfile } from '@/lib/useProfile';
 import type { Forecast, NudgeSeverity, Profile } from '@/lib/types';
-import { Badge, Card, Chip, Loading, Page, Stat, TONE, button, money } from '@/components/ui';
-import { IconArrowRight, IconMoon } from '@/components/icons';
+import { Badge, Card, Chip, Loading, Page, TONE, button, buttonGhost, label, money } from '@/components/ui';
+import { IconArrowRight, IconCheck, IconForecast, IconMoon } from '@/components/icons';
+
+// Recommend the amount and walk the user through their own bank's recurring transfer.
+// BYOB never asks for bank details and never moves the money.
+function AutoSaveCard({ forecast, on, setOn }: { forecast: Forecast; on: boolean; setOn: (v: boolean) => void }) {
+  const [open, setOpen] = useState(false);
+  const [day, setDay] = useState(2);
+  const panelId = useId();
+  const monthly = forecast.timeOffMonthly + forecast.repairFundMonthly;
+
+  const steps = [
+    { title: 'Open a separate savings account', body: 'Name it “BYOB fund” so it stays apart from your spending money.' },
+    { title: 'Go to Transfers → Recurring (or Scheduled) transfer', body: 'Every bank app has one. Pick your chequing account as “from” and the BYOB fund as “to”.' },
+    { title: `Amount: ${money(monthly)}, every month`, body: 'Set it for the day after you usually get paid, so the money moves before you can spend it.' },
+  ];
+
+  return (
+    <Card>
+      <div className="flex items-start gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
+          <IconForecast width={20} height={20} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="title text-[19px] text-ink">Set up auto-save: {money(monthly)}/month</h2>
+          <p className="mt-1 text-[14px] text-ink-2">BYOB recommends the amount. Your bank moves the money.</p>
+        </div>
+      </div>
+
+      <dl className="mt-5 divide-y divide-line rounded-2xl bg-sunken px-4">
+        <div className="flex items-baseline justify-between gap-3 py-3">
+          <dt>
+            <span className="block text-[15px] font-semibold text-ink">Time-off fund</span>
+            <span className="block text-[13px] text-ink-3">4%, like employer vacation pay</span>
+          </dt>
+          <dd className="text-[15px] font-semibold text-ink">{money(forecast.timeOffMonthly)}</dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3 py-3">
+          <dt>
+            <span className="block text-[15px] font-semibold text-ink">Repair fund</span>
+            <span className="block text-[13px] text-ink-3">For medium and high-risk gear</span>
+          </dt>
+          <dd className="text-[15px] font-semibold text-ink">{money(forecast.repairFundMonthly)}</dd>
+        </div>
+      </dl>
+
+      <div aria-live="polite">
+        {on && (
+          <div className="rise mt-4 flex items-center gap-3 rounded-2xl bg-sage-soft p-4">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sage text-white">
+              <IconCheck width={16} height={16} />
+            </span>
+            <p className="text-[15px] font-semibold text-sage">
+              Auto-save on: you&apos;ll have {money(monthly * 12)} by next year
+            </p>
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        className={`${on ? buttonGhost : button} mt-5 w-full`}
+      >
+        {open ? 'Hide the steps' : on ? 'See the steps again' : 'Set up auto-save'}
+      </button>
+
+      {open && (
+        <div id={panelId} className="rise mt-5">
+          <ol className="space-y-4">
+            {steps.map((s, i) => (
+              <li key={s.title} className="flex gap-4">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand text-[13px] font-semibold text-white">{i + 1}</span>
+                <span className="min-w-0">
+                  <span className="block text-[15px] font-semibold text-ink">{s.title}</span>
+                  <span className="block text-[14px] text-ink-2">{s.body}</span>
+                </span>
+              </li>
+            ))}
+            <li className="flex gap-4">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand text-[13px] font-semibold text-white">4</span>
+              <label className="pressable flex min-h-11 flex-1 cursor-pointer items-center gap-3 rounded-2xl border border-line px-4 py-3 has-[:checked]:border-sage has-[:checked]:bg-sage-soft">
+                <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} className="h-5 w-5 accent-[var(--sage)]" />
+                <span className="text-[15px] font-semibold text-ink">Done: I&apos;ve set it up</span>
+              </label>
+            </li>
+          </ol>
+
+          <div className="mt-6 flex flex-wrap items-end gap-3 border-t border-line pt-5">
+            <div>
+              <label className={label} htmlFor="remind-day">Remind me on day</label>
+              <select
+                id="remind-day"
+                value={day}
+                onChange={(e) => setDay(Number(e.target.value))}
+                className="rounded-2xl border border-line bg-surface px-4 py-3 text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-brand/40"
+              >
+                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+            <button onClick={() => downloadReminder(monthly, day)} className={`${buttonGhost} flex-1`}>
+              Add a monthly reminder to my calendar
+            </button>
+          </div>
+          <p className="mt-2 text-[13px] text-ink-3">Downloads a calendar file for Google Calendar, Outlook or Apple Calendar.</p>
+        </div>
+      )}
+
+      <p className="mt-5 text-[13px] font-medium text-ink-2">
+        BYOB never moves or holds your money, and never asks for bank details, card numbers or logins.
+      </p>
+    </Card>
+  );
+}
 
 const WEEKS = ['3 weeks ago', '2 weeks ago', 'Last week', 'This week'];
 const NUDGE_CHIP: Record<NudgeSeverity, { text: string; tone: 'low' | 'medium' | 'high' }> = {
@@ -100,6 +216,7 @@ function NudgeCard({ profile, forecast }: { profile: Profile; forecast: Forecast
 export default function ForecastPage() {
   const profile = useProfile();
   const [f, setF] = useState<Forecast | null>(null);
+  const [autoSave, setAutoSave] = useAutoSave(profile?.name ?? 'you');
 
   useEffect(() => {
     if (profile) api.forecast(profile).then(setF);
@@ -114,6 +231,11 @@ export default function ForecastPage() {
   if (!f) return <Page {...header}><Loading /></Page>;
 
   const max = Math.max(...f.months.map((m) => m.income), 1);
+  // The "after" number counts your own time-off savings only once auto-save is on.
+  const weeklyIncome = (f.average * 12) / 52;
+  const savingsWeeks = weeklyIncome > 0 ? (f.timeOffMonthly * 12) / weeklyIncome : 0;
+  const groupWeeks = Math.max(0, Math.round((f.weeksCoveredAfter - savingsWeeks) * 10) / 10);
+  const afterWeeks = autoSave ? f.weeksCoveredAfter : groupWeeks;
 
   return (
     <Page {...header}>
@@ -128,20 +250,21 @@ export default function ForecastPage() {
             </p>
           </div>
           <div className="border-l border-white/20 pl-4 sm:pl-6">
-            <p className="text-[14px] text-white/70">After a year with BYOB</p>
-            <p className="display mt-1 text-[3.25rem] sm:text-[4.5rem]">
-              {f.weeksCoveredAfter}
+            <p className="text-[14px] text-white/70">{autoSave ? 'After a year with auto-save' : 'With your group today'}</p>
+            <p className="display mt-1 text-[3.25rem] sm:text-[4.5rem]" aria-live="polite">
+              {afterWeeks}
               <span className="ml-2 text-[17px] font-medium tracking-normal text-white/70">weeks</span>
             </p>
           </div>
         </div>
-        <p className="mt-4 text-[14px] text-white/80">Your time-off fund plus the most your group could gift.</p>
+        <p className="mt-4 text-[14px] text-white/80">
+          {autoSave
+            ? 'Your time-off fund plus the most your group could gift.'
+            : `The most your group could gift. Turn on auto-save to reach ${f.weeksCoveredAfter} weeks.`}
+        </p>
       </section>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Stat label="Time-off fund" value={money(f.timeOffMonthly)} unit="/mo" note="4%, like employer vacation pay" />
-        <Stat label="Repair fund" value={money(f.repairFundMonthly)} unit="/mo" note="For medium and high-risk gear" />
-      </div>
+      <AutoSaveCard forecast={f} on={autoSave} setOn={setAutoSave} />
 
       <Card>
         <h2 className="title text-[19px] text-ink">Income, last 12 months</h2>
