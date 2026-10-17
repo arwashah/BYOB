@@ -1,18 +1,26 @@
 'use client';
 
-import { useState, type ComponentType, type SVGProps } from 'react';
+import { useEffect, useState, type ComponentType, type SVGProps } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { EXAMPLES } from '@/lib/examples';
-import { saveProfile } from '@/lib/useProfile';
+import { readDraft, saveDraft, saveProfile, startOver, useSavedProfile } from '@/lib/useProfile';
+import { LANGUAGES } from '@/lib/language';
 import type { Equipment, Insurance, Profile } from '@/lib/types';
-import { Card, Shell, button, buttonGhost, input, label, money } from '@/components/ui';
-import { IconArrowRight, IconArrowUp, IconBread, IconCamera, IconCar, IconUpload, IconWrench, IconX } from '@/components/icons';
+import { Card, MESSAGES, Shell, button, buttonGhost, input, label, money, useRotating } from '@/components/ui';
+import { IconArrowRight, IconArrowUp, IconCake, IconCamera, IconCar, IconUpload, IconWrench, IconX } from '@/components/icons';
 
 const EXAMPLE_ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
-  maya: IconBread,
+  maya: IconCake,
   dev: IconCamera,
   priya: IconCar,
+};
+
+// Each example's biggest risk, so judges can pick the story they want to see.
+const EXAMPLE_RISK: Record<string, string> = {
+  maya: 'Oven is 6 years old, only one',
+  dev: 'Baby on the way, not on EI',
+  priya: 'No business insurance',
 };
 
 const STEPS = [
@@ -44,6 +52,23 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [roughMonthly, setRoughMonthly] = useState('');
   const [csvNote, setCsvNote] = useState('');
+  const [language, setLanguage] = useState('English');
+  const saved = useSavedProfile();
+  const [draft, setDraft] = useState<ReturnType<typeof readDraft>>(null);
+  const [dismissed, setDismissed] = useState(false);
+  const thinking = useRotating(MESSAGES.profile, loading);
+
+  // Read any half-finished onboarding once, after mount (localStorage is browser-only).
+  useEffect(() => {
+    const d = readDraft();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (d && d.profile) setDraft(d);
+  }, []);
+
+  // Save progress after every change past the first step.
+  useEffect(() => {
+    if (step > 0 && profile) saveDraft({ step, description, profile, roughMonthly });
+  }, [step, description, profile, roughMonthly]);
 
   const update = (patch: Partial<Profile>) => setProfile((p) => (p ? { ...p, ...patch } : p));
   const updateEquipment = (i: number, patch: Partial<Equipment>) =>
@@ -52,7 +77,7 @@ export default function OnboardingPage() {
   const pickExample = (key: string) => {
     const ex = EXAMPLES[key];
     setDescription(ex.description);
-    setProfile(structuredClone(ex));
+    setProfile({ ...structuredClone(ex), language });
     setRoughMonthly('');
     setCsvNote(`Using ${ex.name}’s last 12 months of invoices.`);
     setStep(1);
@@ -61,8 +86,8 @@ export default function OnboardingPage() {
   const describe = async () => {
     if (!description.trim() || loading) return;
     setLoading(true);
-    const p = await api.profile(description);
-    setProfile(p);
+    const p = await api.profile(description, language);
+    setProfile({ ...p, language });
     setRoughMonthly(String(p.monthlyIncome[0] ?? ''));
     setLoading(false);
     setStep(1);
@@ -87,9 +112,40 @@ export default function OnboardingPage() {
     router.push('/gaps');
   };
 
+  const resume = () => {
+    if (!draft || !draft.profile) return;
+    setDescription(draft.description);
+    setProfile(draft.profile);
+    setRoughMonthly(draft.roughMonthly);
+    setLanguage(draft.profile.language ?? 'English');
+    setStep(draft.step);
+  };
+
+  const reset = () => {
+    startOver();
+    setDraft(null);
+    setDismissed(true);
+  };
+
+  // A finished profile beats a half-finished one.
+  const returning = !dismissed ? (saved ? { name: saved.name, go: () => router.push('/gaps') } : draft?.profile ? { name: draft.profile.name, go: resume } : null) : null;
+
   if (step === 0 || !profile) {
     return (
       <Shell>
+        {returning && (
+          <div className="rise mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-brand/30 bg-brand-soft p-4">
+            <p className="flex-1 text-[15px] text-ink">
+              Welcome back. Pick up where you left off{returning.name && returning.name !== 'You' ? ` as ${returning.name}` : ''}?
+            </p>
+            <div className="flex gap-2">
+              <button onClick={reset} className={`${buttonGhost} !px-4 !py-2.5 text-[14px]`}>Start over</button>
+              <button onClick={returning.go} className={`${button} !px-4 !py-2.5 text-[14px]`}>
+                Continue{returning.name && returning.name !== 'You' ? ` as ${returning.name}` : ''}
+              </button>
+            </div>
+          </div>
+        )}
         <section className="rise pt-2 sm:pt-8">
           <h1 className="display text-[2.6rem] text-ink sm:text-[4.75rem]">
             Get the benefits <br className="hidden sm:block" />
@@ -123,7 +179,26 @@ export default function OnboardingPage() {
             className="block w-full resize-none bg-transparent px-4 pt-3 text-[17px] leading-relaxed text-ink placeholder:text-ink-3 focus:outline-none"
           />
           <div className="flex items-center justify-between gap-3 px-3 pb-1">
-            <span className="text-[13px] text-ink-3">{loading ? 'Reading your description…' : 'Enter to send'}</span>
+            <span className="flex min-w-0 items-center gap-2 text-[13px] text-ink-3" aria-live="polite">
+              {loading ? (
+                <span className="font-medium text-brand">{thinking}</span>
+              ) : (
+                <>
+                  <label htmlFor="language" className="sr-only">Language for your answers</label>
+                  <select
+                    id="language"
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    className="cursor-pointer rounded-full border border-line bg-surface py-1 pr-2 pl-2.5 text-[13px] text-ink-2 hover:border-brand/40 focus:outline-none focus:ring-2 focus:ring-brand/40"
+                  >
+                    {LANGUAGES.map((l) => (
+                      <option key={l.value} value={l.value}>{l.label}</option>
+                    ))}
+                  </select>
+                  <span className="hidden sm:inline">Enter to send</span>
+                </>
+              )}
+            </span>
             <button
               type="submit"
               disabled={!description.trim() || loading}
@@ -157,6 +232,12 @@ export default function OnboardingPage() {
                     <span className="mt-0.5 block text-[13px] text-ink-3">
                       {ex.city} · ${Math.round(yearly / 1000)}k/yr
                     </span>
+                    {EXAMPLE_RISK[key] && (
+                      <span className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-rose">
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose" />
+                        {EXAMPLE_RISK[key]}
+                      </span>
+                    )}
                   </span>
                   <IconArrowRight width={18} height={18} className="shrink-0 text-ink-3 group-hover:text-brand sm:hidden" />
                 </button>

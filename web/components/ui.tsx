@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import type { Severity } from "@/lib/types";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { clearOffline, useOffline } from "@/lib/api";
+import { useSavedProfile } from "@/lib/useProfile";
 import { IconClaim, IconForecast, IconGaps, IconPool, IconStart, Logo, Wordmark } from "./icons";
 
 export const APP_NAME = "BYOB";
@@ -45,7 +46,7 @@ function OfflineChip() {
       className="inline-flex items-center gap-1.5 rounded-full bg-honey-soft px-3 py-1 text-xs font-semibold text-honey"
     >
       <span className="h-1.5 w-1.5 rounded-full bg-honey" />
-      Sample data
+      Offline demo data
     </span>
   );
 }
@@ -67,18 +68,48 @@ export function Chip({ tone, children }: { tone: Severity; children: ReactNode }
 }
 
 // iOS-style tab bar: separate tabs, each with its own icon, floating on a
-// translucent material so content scrolls underneath.
+// translucent material so content scrolls underneath. Until onboarding is done
+// the later tabs are greyed out and point back to Start.
 function TabBar() {
   const path = usePathname();
+  const saved = useSavedProfile();
+  const locked = saved === null && path === "/";
+  const [hint, setHint] = useState(false);
+  useEffect(() => {
+    if (!hint) return;
+    const t = setTimeout(() => setHint(false), 2200);
+    return () => clearTimeout(t);
+  }, [hint]);
   return (
     <nav
       aria-label="Steps"
       className="fixed inset-x-0 bottom-0 z-30 px-3 sm:bottom-5"
       style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 8px)" }}
     >
+      {hint && (
+        <p role="status" className="rise mx-auto mb-2 w-fit rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white shadow-lg">
+          Start here first: describe your business
+        </p>
+      )}
       <ul className="glass mx-auto grid max-w-md grid-cols-5 gap-1 rounded-2xl border border-line/70 p-1.5 shadow-[0_8px_30px_rgba(17,19,17,0.12)]">
         {STEPS.map(({ href, label, Icon }) => {
           const active = path === href;
+          if (locked && href !== "/") {
+            return (
+              <li key={href}>
+                <button
+                  type="button"
+                  onClick={() => setHint(true)}
+                  aria-disabled="true"
+                  title="Start here first"
+                  className="flex w-full cursor-not-allowed flex-col items-center gap-0.5 rounded-2xl py-2 text-[11px] font-medium text-ink-3/60"
+                >
+                  <Icon width={22} height={22} />
+                  {label}
+                </button>
+              </li>
+            );
+          }
           return (
             <li key={href}>
               <Link
@@ -155,9 +186,36 @@ export function Badge({ level }: { level: Severity }) {
   );
 }
 
-export function Loading() {
+// Cycles through messages every 3 s so a 10-20 s AI wait feels intentional.
+export function useRotating(messages: string[], active = true, every = 3000) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => setI((n) => n + 1), every);
+    return () => {
+      clearInterval(t);
+      setI(0);
+    };
+  }, [active, every, messages.length]);
+  return messages[i % messages.length];
+}
+
+export const MESSAGES = {
+  claim: ["Reading your policy…", "Finding what’s covered…", "Doing the maths…", "Writing your claim letter…"],
+  profile: ["Understanding your business…", "Spotting the gear you rely on…"],
+  gaps: ["Understanding your business…", "Comparing you to an employee…"],
+};
+
+export function Loading({ messages }: { messages?: string[] }) {
+  const message = useRotating(messages ?? [""], !!messages);
   return (
     <div className="space-y-4" aria-label="Loading">
+      {messages && (
+        <p key={message} role="status" aria-live="polite" className="rise flex items-center gap-2.5 text-[15px] font-medium text-brand">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand/25 border-t-brand" />
+          {message}
+        </p>
+      )}
       {[0, 1, 2].map((i) => (
         <div key={i} className="rounded-2xl border border-line bg-surface p-6">
           <div className="skeleton h-4 w-2/5 rounded-full" />

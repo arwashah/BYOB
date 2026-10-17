@@ -5,9 +5,10 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useLive } from '@/lib/useLive';
 import { useProfile } from '@/lib/useProfile';
+import { textDir } from '@/lib/language';
 import type { ClaimPlan, ClaimResult, Insurance, PlanStep } from '@/lib/types';
-import { Card, Loading, Page, button, buttonGhost, input, label, money } from '@/components/ui';
-import { IconArrowRight, IconCheck, IconClaim, IconCopy, IconGaps, IconPool, IconUpload, IconWrench, IconX } from '@/components/icons';
+import { Card, Loading, MESSAGES, Page, button, buttonGhost, input, label, money } from '@/components/ui';
+import { IconArrowRight, IconCamera, IconCheck, IconClaim, IconCopy, IconGaps, IconPool, IconUpload, IconWrench, IconX } from '@/components/icons';
 
 const STATUS = {
   covered: { text: 'Covered', cls: 'bg-sage-soft text-sage' },
@@ -115,6 +116,7 @@ export default function ClaimPage() {
   const [dragging, setDragging] = useState(false);
   const [result, setResult] = useState<ClaimResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [skipPolicy, setSkipPolicy] = useState(false);
   const [ready, setReady] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
@@ -142,19 +144,32 @@ export default function ClaimPage() {
 
   if (!profile) return <Page title="Something broke?"><Loading /></Page>;
 
+  // Never shows a made-up answer: if the server can't read the policy, say so
+  // and let the user re-send the same file.
   const read = async () => {
     if (!policy) return;
     setLoading(true);
+    setFailed(false);
     setResult(null);
-    const r = await api.claim(profile, broken, cost, policy);
-    setResult(r);
-    setDraft(r.draft);
-    setReady([]);
-    setLoading(false);
+    try {
+      const r = await api.claim(profile, broken, cost, policy);
+      setResult(r);
+      setDraft(r.draft);
+      setReady([]);
+    } catch (err) {
+      console.warn('Policy reader failed:', err);
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // A PDF, or a photo of a paper policy (the server reads both).
   const pickFile = (f: File | undefined | null) => {
-    if (f && (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))) setPolicy(f);
+    if (f && (f.type === 'application/pdf' || f.type.startsWith('image/') || f.name.toLowerCase().endsWith('.pdf'))) {
+      setPolicy(f);
+      setFailed(false);
+    }
   };
 
   const copy = async () => {
@@ -245,9 +260,14 @@ export default function ClaimPage() {
               <span className={`grid h-14 w-14 place-items-center rounded-2xl ${policy ? 'bg-sage text-white' : 'bg-brand-soft text-brand'}`}>
                 {policy ? <IconCheck width={26} height={26} /> : <IconUpload width={26} height={26} />}
               </span>
-              <span className="title mt-4 block text-[17px] text-ink">{policy ? policy.name : 'Drop your policy PDF here'}</span>
-              <span className="mt-1 block text-[14px] text-ink-2">{policy ? 'Tap to choose a different file' : 'or tap to choose a file'}</span>
-              <input type="file" accept="application/pdf" className="sr-only" onChange={(e) => pickFile(e.target.files?.[0])} />
+              <span className="title mt-4 block text-[17px] text-ink">{policy ? policy.name : 'Drop your policy here'}</span>
+              <span className="mt-1 block text-[14px] text-ink-2">{policy ? 'Tap to choose a different file' : 'A PDF, or a photo of the paper copy'}</span>
+              <input type="file" accept="application/pdf,image/*" className="sr-only" onChange={(e) => pickFile(e.target.files?.[0])} />
+            </label>
+            <label className={`${buttonGhost} mt-3 w-full cursor-pointer sm:hidden`}>
+              <IconCamera width={18} height={18} />
+              Snap a photo of your policy
+              <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => pickFile(e.target.files?.[0])} />
             </label>
             <button onClick={read} disabled={!policy || loading} className={`${button} mt-5 w-full`}>
               {loading ? 'Reading your policy…' : 'Read my policy'}
@@ -262,7 +282,7 @@ export default function ClaimPage() {
         </>
       )}
 
-      {!noPolicy && !result && !loading && !skipPolicy && (
+      {!noPolicy && !result && !loading && !failed && !skipPolicy && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {[
             { Icon: IconGaps, title: 'A clear verdict', body: 'Covered, partly covered or not, with the exact clause.' },
@@ -278,68 +298,87 @@ export default function ClaimPage() {
         </div>
       )}
 
-      {loading && <Loading />}
+      {loading && <Loading messages={MESSAGES.claim} />}
+
+      {failed && !loading && (
+        <Card className="!border-rose/30">
+          <div className="flex items-start gap-4">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-rose-soft text-rose">
+              <IconX width={20} height={20} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="title text-[19px] text-ink">We couldn&apos;t read your policy right now.</h2>
+              <p className="mt-1 text-[15px] text-ink-2">Try again in a minute. We won&apos;t guess at what you&apos;re owed.</p>
+              <button onClick={read} className={`${button} mt-4`}>
+                Try again <IconArrowRight width={18} height={18} />
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {result && (
         <>
           <Card>
             <SectionTitle n={3}>What your policy says</SectionTitle>
-            <span className={`inline-block rounded-full px-3 py-1.5 text-[13px] font-semibold ${STATUS[result.status].cls}`}>{STATUS[result.status].text}</span>
-            <p className="mt-3 text-[17px] leading-relaxed text-ink">{result.summary}</p>
+            <div dir={textDir(profile.language)}>
+              <span className={`inline-block rounded-full px-3 py-1.5 text-[13px] font-semibold ${STATUS[result.status].cls}`}>{STATUS[result.status].text}</span>
+              <p className="mt-3 text-[17px] leading-relaxed text-ink">{result.summary}</p>
 
-            {result.sourceClauses && result.sourceClauses.length > 0 ? (
-              <div className="mt-4 space-y-3">
-                <p className="text-[13px] font-semibold text-ink-2">From your policy</p>
-                {result.sourceClauses.map((c) => (
-                  <blockquote key={c.quote} className="border-l-2 border-brand pl-4">
-                    <p className="text-[14px] italic text-ink-2">&ldquo;{c.quote}&rdquo;</p>
-                    <p className="mt-1 text-[12px] text-ink-3">{c.section}</p>
-                  </blockquote>
-                ))}
-              </div>
-            ) : (
-              result.source && <blockquote className="mt-4 border-l-2 border-brand pl-4 text-[14px] italic text-ink-2">{result.source}</blockquote>
-            )}
-
-            {result.calculation && result.calculation.length > 0 && (
-              <div className="mt-6 rounded-2xl bg-sunken p-4">
-                <p className="mb-2 text-[13px] font-semibold text-ink-2">How the payout is worked out</p>
-                <dl className="divide-y divide-line">
-                  {result.calculation.map((line, i) => (
-                    <div key={line.label} className="flex justify-between gap-3 py-2 text-[14px]">
-                      <dt className="text-ink-2">{line.label}</dt>
-                      <dd className={i === result.calculation!.length - 1 ? 'font-semibold text-ink' : 'text-ink'}>{money(line.amount)}</dd>
-                    </div>
+              {result.sourceClauses && result.sourceClauses.length > 0 ? (
+                <div className="mt-4 space-y-3">
+                  <p className="text-[13px] font-semibold text-ink-2">From your policy</p>
+                  {result.sourceClauses.map((c) => (
+                    <blockquote key={c.quote} className="border-l-2 border-brand pl-4">
+                      <p className="text-[14px] italic text-ink-2">&ldquo;{c.quote}&rdquo;</p>
+                      <p className="mt-1 text-[12px] text-ink-3">{c.section}</p>
+                    </blockquote>
                   ))}
-                </dl>
-              </div>
-            )}
+                </div>
+              ) : (
+                result.source && <blockquote className="mt-4 border-l-2 border-brand pl-4 text-[14px] italic text-ink-2">{result.source}</blockquote>
+              )}
 
-            <div className="mt-6">
-              <SplitBar
-                parts={[
-                  { label: 'Insurer pays', value: result.insurerPays, cls: 'bg-sage' },
-                  { label: 'Left for you', value: result.uncovered, cls: 'bg-honey' },
-                ]}
-              />
-            </div>
+              {result.calculation && result.calculation.length > 0 && (
+                <div className="mt-6 rounded-2xl bg-sunken p-4">
+                  <p className="mb-2 text-[13px] font-semibold text-ink-2">How the payout is worked out</p>
+                  <dl className="divide-y divide-line">
+                    {result.calculation.map((line, i) => (
+                      <div key={line.label} className="flex justify-between gap-3 py-2 text-[14px]">
+                        <dt className="text-ink-2">{line.label}</dt>
+                        <dd className={i === result.calculation!.length - 1 ? 'font-semibold text-ink' : 'text-ink'}>{money(line.amount)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              )}
 
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-sage-soft p-4">
-                <p className="mb-2 text-[13px] font-semibold text-sage">Covered</p>
-                <ul className="space-y-2">
-                  {result.covered.map((c) => (
-                    <li key={c} className="flex gap-2 text-[14px] text-ink"><IconCheck width={16} height={16} className="mt-0.5 shrink-0 text-sage" />{c}</li>
-                  ))}
-                </ul>
+              <div className="mt-6">
+                <SplitBar
+                  parts={[
+                    { label: 'Insurer pays', value: result.insurerPays, cls: 'bg-sage' },
+                    { label: 'Left for you', value: result.uncovered, cls: 'bg-honey' },
+                  ]}
+                />
               </div>
-              <div className="rounded-2xl bg-rose-soft p-4">
-                <p className="mb-2 text-[13px] font-semibold text-rose">Not covered</p>
-                <ul className="space-y-2">
-                  {result.notCovered.map((c) => (
-                    <li key={c} className="flex gap-2 text-[14px] text-ink"><IconX width={16} height={16} className="mt-0.5 shrink-0 text-rose" />{c}</li>
-                  ))}
-                </ul>
+
+              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-sage-soft p-4">
+                  <p className="mb-2 text-[13px] font-semibold text-sage">Covered</p>
+                  <ul className="space-y-2">
+                    {result.covered.map((c) => (
+                      <li key={c} className="flex gap-2 text-[14px] text-ink"><IconCheck width={16} height={16} className="mt-0.5 shrink-0 text-sage" />{c}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-2xl bg-rose-soft p-4">
+                  <p className="mb-2 text-[13px] font-semibold text-rose">Not covered</p>
+                  <ul className="space-y-2">
+                    {result.notCovered.map((c) => (
+                      <li key={c} className="flex gap-2 text-[14px] text-ink"><IconX width={16} height={16} className="mt-0.5 shrink-0 text-rose" />{c}</li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             </div>
           </Card>

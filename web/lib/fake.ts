@@ -5,7 +5,6 @@
 import type {
   ClaimPlan,
   ClaimPlanInput,
-  ClaimResult,
   Equipment,
   EquipmentRisk,
   Forecast,
@@ -169,33 +168,6 @@ export function fakeGaps(p: Profile): Gap[] {
 
   const rank = { high: 0, medium: 1, low: 2 };
   return gaps.sort((a, b) => rank[a.severity] - rank[b.severity]);
-}
-
-export function fakeClaim(p: Profile, item: string, repairCost: number): ClaimResult {
-  const deductible = 500;
-  const insurerPays = Math.max(0, repairCost - deductible);
-  const lostIncome = Math.round(avg(p.monthlyIncome) / 4); // about a week
-  return {
-    status: "partial",
-    summary: `Your ${item.toLowerCase()} breakdown is covered for parts and labour after a $${deductible} deductible. Lost income while it's being fixed is not covered.`,
-    covered: [`Repair or replacement of the ${item.toLowerCase()} (parts and labour)`, "Emergency service call-out fee"],
-    notCovered: [`$${deductible} deductible`, `Lost income while closed (about $${lostIncome})`, "Damage from normal wear and tear"],
-    documents: ["Repair invoice or quote", "Photo of the damaged equipment", "Proof of purchase or age", "Maintenance records"],
-    insurerPays,
-    uncovered: deductible + lostIncome,
-    draft: `To the claims department,
-
-I am writing to file a claim under my policy's Equipment Breakdown section for my ${item.toLowerCase()}, which stopped working on ${new Date().toLocaleDateString("en-CA")}.
-
-The repair estimate is $${repairCost.toLocaleString()}. I have attached the repair quote, photos of the equipment, proof of purchase and maintenance records.
-
-Please confirm receipt and let me know if anything else is needed.
-
-Sincerely,
-${p.name}
-${p.business}, ${p.city}`,
-    source: 'Section 4.2: "We will pay for direct physical loss to covered equipment caused by mechanical or electrical breakdown."',
-  };
 }
 
 export function fakePool(): Pool {

@@ -99,6 +99,16 @@ export const IconBread = (p: P) => (
   </svg>
 );
 
+export const IconCake = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 20h16" />
+    <path d="M5 20v-6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6" />
+    <path d="M5 16c1.2 0 1.8-1 3.5-1s2.3 1 3.5 1 1.8-1 3.5-1 2.3 1 3.5 1" />
+    <path d="M12 12V8.5" />
+    <path d="M12 6.2c.9-.8.9-1.9 0-3.2-.9 1.3-.9 2.4 0 3.2Z" />
+  </svg>
+);
+
 export const IconCamera = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" />
