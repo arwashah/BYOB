@@ -117,15 +117,30 @@ export default function ForecastPage() {
 
   return (
     <Page {...header}>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <section aria-label="Weeks off covered" className="rise overflow-hidden rounded-2xl bg-brand p-6 text-white sm:p-8">
+        <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-white/70">Weeks of income covered if you stop working</p>
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-[14px] text-white/70">Before BYOB</p>
+            <p className="display mt-1 text-[3.25rem] sm:text-[4.5rem]">
+              {f.weeksCoveredBefore}
+              <span className="ml-2 text-[17px] font-medium tracking-normal text-white/70">weeks</span>
+            </p>
+          </div>
+          <div className="border-l border-white/20 pl-4 sm:pl-6">
+            <p className="text-[14px] text-white/70">After a year with BYOB</p>
+            <p className="display mt-1 text-[3.25rem] sm:text-[4.5rem]">
+              {f.weeksCoveredAfter}
+              <span className="ml-2 text-[17px] font-medium tracking-normal text-white/70">weeks</span>
+            </p>
+          </div>
+        </div>
+        <p className="mt-4 text-[14px] text-white/80">Your time-off fund plus the most your group could gift.</p>
+      </section>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Stat label="Time-off fund" value={money(f.timeOffMonthly)} unit="/mo" note="4%, like employer vacation pay" />
         <Stat label="Repair fund" value={money(f.repairFundMonthly)} unit="/mo" note="For medium and high-risk gear" />
-        <Stat
-          label="Weeks off covered"
-          value={<>{f.weeksCoveredBefore} <span className="text-ink-3">→</span> {f.weeksCoveredAfter}</>}
-          note="Before vs after a year with BYOB"
-          accent
-        />
       </div>
 
       <Card>

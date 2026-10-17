@@ -23,6 +23,7 @@ export interface Profile {
   hasHealthPlan: boolean;
   eiRegistered: boolean;
   lifeEvents: string[]; // e.g. "baby", "caregiving"
+  language?: string; // AI answers are written in this; the claim letter stays English
   daysWorked?: number[]; // days worked in each of the last 4 weeks, oldest first
   repairFundSaved?: number; // already set aside for repairs
 }

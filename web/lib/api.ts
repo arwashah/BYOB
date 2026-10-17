@@ -20,7 +20,6 @@ import type {
   Profile,
 } from "./types";
 import {
-  fakeClaim,
   fakeClaimPlan,
   fakeForecast,
   fakeGaps,
@@ -104,23 +103,27 @@ const post = (body: unknown, signal?: AbortSignal): RequestInit => ({
 });
 
 export const api = {
-  profile: (description: string) =>
-    call<Profile, Profile>("/profile", post({ description }), same, () => fakeProfile(description)),
+  profile: (description: string, language = "English") =>
+    call<Profile, Profile>("/profile", post({ description, language }), same, () => fakeProfile(description)),
 
   gaps: (profile: Profile) => call<Gap[], Gap[]>("/gaps", post(profile), same, () => fakeGaps(profile)),
 
   forecast: (profile: Profile) =>
     call<Forecast, Forecast>("/forecast", post(profile), same, () => fakeForecast(profile)),
 
-  claim: (profile: Profile, item: string, repairCost: number, policy: File) => {
+  // No stand-in here: a made-up payout would be a wrong money number. If the
+  // policy can't be read, this throws and the Claim page asks the user to retry.
+  claim: async (profile: Profile, item: string, repairCost: number, policy: File): Promise<ClaimResult> => {
+    if (!API_URL) throw new Error("No server configured (NEXT_PUBLIC_API_URL)");
     const form = new FormData();
     form.append("policy", policy);
     form.append("profile", JSON.stringify(profile));
     form.append("item", item);
     form.append("repair_cost", String(repairCost));
-    return call<ClaimResult, ClaimResult>("/claim", { method: "POST", body: form }, same, () =>
-      fakeClaim(profile, item, repairCost),
-    );
+    form.append("language", profile.language ?? "English");
+    const res = await fetch(`${API_URL}/claim`, { method: "POST", body: form });
+    if (!res.ok) throw new Error(`/claim returned ${res.status}`);
+    return (await res.json()) as ClaimResult;
   },
 
   claimPlan: (input: ClaimPlanInput, signal?: AbortSignal) =>
