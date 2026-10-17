@@ -25,6 +25,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import claim_plan
@@ -573,6 +574,50 @@ async def claim(
         ],
         "deadline": ai.get("deadline"),
     }
+
+
+HOME_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>byob API</title>
+<style>
+  :root { --green: #2f5a45; --ink: #1d2420; --muted: #66706a; --line: #e4e8e5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f7f8f7;
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); padding: 16px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 36px 32px;
+          max-width: 460px; width: 100%; box-shadow: 0 8px 30px rgba(0,0,0,.05); }
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 700; }
+  .mark { width: 36px; height: 36px; border-radius: 10px; background: var(--green); color: #fff;
+          display: grid; place-items: center; font-size: 18px; }
+  .status { display: inline-flex; align-items: center; gap: 8px; margin: 18px 0 6px; font-size: 14px;
+            color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: __DOT__; }
+  p { line-height: 1.55; color: var(--ink); margin: 14px 0 22px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  a { text-decoration: none; padding: 11px 18px; border-radius: 12px; font-weight: 600; font-size: 15px; }
+  .primary { background: var(--green); color: #fff; }
+  .ghost { border: 1px solid var(--line); color: var(--ink); }
+  small { display: block; margin-top: 26px; color: var(--muted); font-size: 13px; }
+</style></head>
+<body><main class="card">
+  <div class="logo"><span class="mark">&#127793;</span>byob API</div>
+  <div class="status"><span class="dot"></span>__STATUS__</div>
+  <p>The AI behind BYOB (Bring Your Own Benefits): it reads any self-employed person's description
+     and any insurance policy, and answers only from our rules, quoting its sources.</p>
+  <div class="btns"><a class="primary" href="/docs">Try it (docs)</a><a class="ghost" href="/health">Status</a></div>
+  <small>Informs, never sells. Not financial advice.</small>
+</main></body></html>"""
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def home():
+    """Friendly page for anyone who opens the bare server link."""
+    import html
+    key_set = bool(os.getenv("GEMINI_API_KEY"))
+    status = f"Running · {html.escape(MODEL)}" if key_set else "Running · AI key missing"
+    return (HOME_PAGE.replace("__STATUS__", status)
+            .replace("__DOT__", "#2e9e5b" if key_set else "#d08a1f"))
 
 
 @app.get("/health")
