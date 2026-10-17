@@ -1,0 +1,24 @@
+{
+  "name": "Toronto Solo Makers Circle",
+  "monthly_contribution": 40,
+  "balance": 9600,
+  "members": [
+    {"id": "you", "first_name": "You", "trade": "Solo business", "joined": "2026-02-15", "active": true},
+    {"id": "ravi", "first_name": "Ravi", "trade": "Plumber", "joined": "2025-03-01", "active": true},
+    {"id": "lena", "first_name": "Lena", "trade": "Graphic designer", "joined": "2025-03-15", "active": true},
+    {"id": "omar", "first_name": "Omar", "trade": "Electrician", "joined": "2025-04-01", "active": true},
+    {"id": "sofia", "first_name": "Sofia", "trade": "Hair stylist", "joined": "2025-04-10", "active": true},
+    {"id": "jin", "first_name": "Jin", "trade": "Photographer", "joined": "2025-05-01", "active": true},
+    {"id": "anika", "first_name": "Anika", "trade": "Bookkeeper", "joined": "2025-06-01", "active": true},
+    {"id": "marcus", "first_name": "Marcus", "trade": "Carpenter", "joined": "2025-07-01", "active": true},
+    {"id": "amara", "first_name": "Amara", "trade": "Caterer", "joined": "2025-09-01", "active": true},
+    {"id": "tom", "first_name": "Tom", "trade": "Bike mechanic", "joined": "2025-11-01", "active": true},
+    {"id": "nadia", "first_name": "Nadia", "trade": "Tailor", "joined": "2026-02-01", "active": true},
+    {"id": "eli", "first_name": "Eli", "trade": "Web developer", "joined": "2026-09-01", "active": true}
+  ],
+  "ledger": [
+    {"date": "2026-02-12", "type": "payout", "member_id": "ravi", "amount": 1800, "note": "Van transmission repair"},
+    {"date": "2026-06-03", "type": "payout", "member_id": "sofia", "amount": 1200, "note": "2 weeks sick leave"},
+    {"date": "2026-10-01", "type": "contribution", "member_id": null, "amount": 480, "note": "October contributions (12 members)"}
+  ]
+}

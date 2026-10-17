@@ -1,0 +1,37 @@
+{
+  "_note": "Stand-in /claim response (web/lib/types.ts ClaimResult) for building the claim page before the real policy reader is ready. Matches maya_policy.pdf.",
+  "status": "partial",
+  "summary": "Your deck oven breakdown is covered, but only partly. Because the oven is 6 years old, the policy pays 70% of the $6,000 replacement, capped at $4,000, minus the $500 deductible. Lost income while it's out is not covered.",
+  "covered": [
+    "Oven repair or replacement after a sudden breakdown (heating element, motor, thermostat or control board)"
+  ],
+  "notCovered": [
+    "Lost income while the oven is out (Business Interruption not purchased)",
+    "Spoiled stock caused by the breakdown (Spoilage not purchased)",
+    "Renting a temporary oven or kitchen (Rental Equipment not purchased)"
+  ],
+  "documents": [
+    "Signed Proof of Loss form",
+    "Repair estimate or replacement quote from a licensed technician",
+    "Technician's report on the cause of failure",
+    "Proof of purchase date (invoice or receipt)",
+    "Maintenance records for the last 12 months",
+    "Photos of the damage and serial number plate"
+  ],
+  "insurerPays": 3500,
+  "uncovered": 2500,
+  "source": "Section 2: \"Age rule: equipment older than 5 years is paid at 70% of the repair or replacement cost.\"",
+  "sourceClauses": [
+    {"section": "2. Equipment Breakdown Coverage", "quote": "Age rule: equipment older than 5 years is paid at 70% of the repair or replacement cost."},
+    {"section": "2. Equipment Breakdown Coverage", "quote": "Limit: we pay at most $4,000 for any one breakdown."},
+    {"section": "3. NOT Covered", "quote": "Lost income while equipment is being repaired or replaced (Business Interruption was not purchased)."}
+  ],
+  "calculation": [
+    {"label": "Replacement cost", "amount": 6000},
+    {"label": "Age rule: 6 years old, paid at 70%", "amount": 4200},
+    {"label": "Capped at the $4,000 breakdown limit", "amount": 4000},
+    {"label": "Less the $500 deductible", "amount": 3500}
+  ],
+  "deadline": "Notify the insurer in writing within 30 days of the breakdown.",
+  "draft": "To: Maple Mutual Small Business Insurance, Claims Department\nRe: Equipment Breakdown claim, Policy BSP-2025-0417\n\nI am writing to notify you of an equipment breakdown at Maya's Bakery, 142 Dundas Street West, Toronto. On [date], our insured deck oven (Bakemaster DX-3, purchased June 2020) stopped heating and could not be repaired. A licensed technician has quoted $6,000 for replacement.\n\nUnder Section 2 of the policy (Equipment Breakdown Coverage), I am requesting payment for the replacement. I understand that, as the oven is over 5 years old, settlement is 70% of cost, subject to the $4,000 limit and the $500 deductible.\n\nEnclosed: signed Proof of Loss form, technician's quote and report, original purchase invoice, maintenance records for the last 12 months, and photos of the oven and serial plate.\n\nPlease contact me at [phone/email] with any questions.\n\nSincerely,\nMaya Rahman"
+}
