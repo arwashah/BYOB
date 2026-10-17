@@ -37,6 +37,9 @@ export interface Gap {
   why: string;
   fixes: string[];
   source?: string; // the rule from rules.md this is grounded in
+  sourceName?: string; // e.g. "Canada.ca: EI special benefits for self-employed people"
+  sourceUrl?: string | null;
+  checkedOn?: string; // when the rule was last checked, e.g. "2026-10-17"
 }
 
 export interface EquipmentRisk {
