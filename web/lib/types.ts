@@ -47,7 +47,7 @@ export interface EquipmentRisk {
 }
 
 export interface Forecast {
-  months: { label: string; income: number }[];
+  months: { label: string; income: number; trend?: number }[];
   average: number;
   leanMonths: string[];
   timeOffMonthly: number; // 4% of income
@@ -55,6 +55,9 @@ export interface Forecast {
   equipment: EquipmentRisk[];
   weeksCoveredBefore: number;
   weeksCoveredAfter: number;
+  timeOffWeeks: number;
+  volatility: number;
+  totalMonthlySetAside: number;
 }
 
 export interface ClaimResult {
