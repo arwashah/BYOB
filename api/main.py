@@ -25,11 +25,13 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import claim_plan
 import nudge
 import pool
+import forecast as forecast_maths  # Person 3's forecast.py
 
 HERE = Path(__file__).parent
 load_dotenv(HERE / ".env")  # GEMINI_API_KEY (and optional GEMINI_MODEL)
@@ -248,6 +250,35 @@ class AIGap(BaseModel):
     why: str
     fixes: list[str]
     source: str
+    sourceId: str  # one of the [source: ...] tags in rules.md
+
+
+# Official sources behind rules.md. The AI only picks an id; the link and date come from here,
+# so it can never invent a URL. Update "checked" whenever you re-verify a page.
+SOURCES = {
+    "ontario-esa": {"name": "Ontario: Your guide to the Employment Standards Act",
+                    "url": "https://www.ontario.ca/document/your-guide-employment-standards-act-0/vacation",
+                    "checked": "2026-10-17"},
+    "ei-self-employed": {"name": "Canada.ca: EI special benefits for self-employed people",
+                         "url": "https://www.canada.ca/en/employment-social-development/programs/ei/ei-list/reports/self-employed-special-benefits.html",
+                         "checked": "2026-10-17"},
+    "cpp": {"name": "Canada Revenue Agency: CPP for self-employed workers",
+            "url": "https://www.canada.ca/en/revenue-agency/services/tax/canada-pension-plan-cpp-employment-insurance-ei-rulings/cpp-ei-explained/employees-self-employed-workers-responsibilities-benefits-entitlements.html",
+            "checked": "2026-10-17"},
+    "dental": {"name": "Canada.ca: Canadian Dental Care Plan, do you qualify",
+               "url": "https://www.canada.ca/en/services/benefits/dental/dental-care-plan/qualify.html",
+               "checked": "2026-10-17"},
+    "wsib": {"name": "WSIB: Optional insurance",
+             "url": "https://www.wsib.ca/en/businesses/registration-and-coverage/optional-insurance",
+             "checked": "2026-10-17"},
+    "byob": {"name": "BYOB guidance (general advice, not a government rule)", "url": None,
+             "checked": "2026-10-17"},
+}
+
+
+def with_source(source_id: str) -> dict:
+    src = SOURCES.get((source_id or "").strip()) or SOURCES["byob"]
+    return {"sourceName": src["name"], "sourceUrl": src["url"], "checkedOn": src["checked"]}
 
 
 class AIClause(BaseModel):
@@ -390,57 +421,16 @@ def profile(body: ProfileIn):
 
 
 # ---------------------------------------------------------------- /forecast
-# Plain maths, same rules as web/lib/fake.ts so the numbers match offline mode.
-# Arwa: if you write a better version, replace compute_forecast and keep the output keys.
-
-def equipment_risk(e: dict) -> dict:
-    age, repairs = money(e.get("ageYears")), money(e.get("repairs"))
-    only_one = e.get("isOnlyOne", True)
-    score = min(100, round(age / 10 * 50 + repairs * 15 + (20 if only_one else 0)))
-    level = "high" if score >= 70 else "medium" if score >= 40 else "low"
-    months = {"high": 24, "medium": 48, "low": 96}[level]
-    reason = ", ".join([
-        f"{age} years old",
-        f"{repairs} repair{'' if repairs == 1 else 's'}",
-        "your only one" if only_one else "you have a backup",
-    ])
-    return {
-        "name": e.get("name", "Equipment"),
-        "score": score,
-        "level": level,
-        "reason": reason,
-        "monthlySetAside": round(money(e.get("replacementCost")) / months),
-    }
-
+# The maths lives in Arwa's forecast.py (Person 3). We only add the pool's biggest gift.
 
 def compute_forecast(p: dict) -> dict:
-    income = [money(v) for v in p.get("monthlyIncome") or []]
-    if len(income) != 12:
-        income = [income[0] if income else 0] * 12
-    average = round(sum(income) / 12)
-    months = [{"label": MONTHS[i], "income": v} for i, v in enumerate(income)]
-    equipment = sorted((equipment_risk(e) for e in p.get("equipment") or []),
-                       key=lambda r: r["score"], reverse=True)
-    time_off = round(average * TIME_OFF_RATE)
-    weekly_income = average * 12 / 52 or 1
     with pool._lock:
         biggest_gift = pool.max_payout(pool._pool)
-    return {
-        "months": months,
-        "average": average,
-        "leanMonths": [m["label"] for m in months if m["income"] < average * 0.85],
-        "timeOffMonthly": time_off,
-        "repairFundMonthly": sum(r["monthlySetAside"] for r in equipment if r["level"] != "low"),
-        "equipment": equipment,
-        "weeksCoveredBefore": 0,
-        # a year of 4% savings plus the biggest gift the group can give right now
-        "weeksCoveredAfter": round((time_off * 12 + biggest_gift) / weekly_income, 1),
-        "timeOffWeeks": round(time_off * 12 / weekly_income, 1),
-    }
+    return forecast_maths.compute_forecast(p, biggest_gift=biggest_gift)
 
 
 @app.post("/forecast")
-def forecast(p: dict):
+def forecast_route(p: dict):
     return compute_forecast(p)
 
 
@@ -463,6 +453,8 @@ def gaps(p: dict):
         "- fixes: 2-3 concrete actions, cheapest or most urgent first; use the dollar amounts in "
         "NUMBERS where they fit; never tell them to buy a specific product\n"
         "- source: the rule you used, short (e.g. 'Ontario ESA: 4% vacation pay')\n"
+        "- sourceId: the [source: ...] tag of the RULES section that rule comes from, exactly as "
+        "written (one of: " + ", ".join(SOURCES) + ")\n"
         "Always include time off / sick income. Flag EI as high if they are not registered and "
         "have a life event coming. Flag equipment rated 'high' in NUMBERS. Flag insurance if it is "
         "'no' or 'not_sure', and health/dental if hasHealthPlan is false.\n\n"
@@ -480,6 +472,7 @@ def gaps(p: dict):
             "why": g.get("why", ""),
             "fixes": g.get("fixes") or [],
             "source": g.get("source") or None,
+            **with_source(g.get("sourceId")),  # sourceName, sourceUrl, checkedOn
         })
     return sorted(out, key=lambda g: rank[g["severity"]])
 
@@ -573,6 +566,50 @@ async def claim(
         ],
         "deadline": ai.get("deadline"),
     }
+
+
+HOME_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>byob API</title>
+<style>
+  :root { --green: #2f5a45; --ink: #1d2420; --muted: #66706a; --line: #e4e8e5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f7f8f7;
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); padding: 16px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 36px 32px;
+          max-width: 460px; width: 100%; box-shadow: 0 8px 30px rgba(0,0,0,.05); }
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 700; }
+  .mark { width: 36px; height: 36px; border-radius: 10px; background: var(--green); color: #fff;
+          display: grid; place-items: center; font-size: 18px; }
+  .status { display: inline-flex; align-items: center; gap: 8px; margin: 18px 0 6px; font-size: 14px;
+            color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: __DOT__; }
+  p { line-height: 1.55; color: var(--ink); margin: 14px 0 22px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  a { text-decoration: none; padding: 11px 18px; border-radius: 12px; font-weight: 600; font-size: 15px; }
+  .primary { background: var(--green); color: #fff; }
+  .ghost { border: 1px solid var(--line); color: var(--ink); }
+  small { display: block; margin-top: 26px; color: var(--muted); font-size: 13px; }
+</style></head>
+<body><main class="card">
+  <div class="logo"><span class="mark">&#127793;</span>byob API</div>
+  <div class="status"><span class="dot"></span>__STATUS__</div>
+  <p>The AI behind BYOB (Bring Your Own Benefits): it reads any self-employed person's description
+     and any insurance policy, and answers only from our rules, quoting its sources.</p>
+  <div class="btns"><a class="primary" href="/docs">Try it (docs)</a><a class="ghost" href="/health">Status</a></div>
+  <small>Informs, never sells. Not financial advice.</small>
+</main></body></html>"""
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def home():
+    """Friendly page for anyone who opens the bare server link."""
+    import html
+    key_set = bool(os.getenv("GEMINI_API_KEY"))
+    status = f"Running · {html.escape(MODEL)}" if key_set else "Running · AI key missing"
+    return (HOME_PAGE.replace("__STATUS__", status)
+            .replace("__DOT__", "#2e9e5b" if key_set else "#d08a1f"))
 
 
 @app.get("/health")

@@ -1,0 +1,54 @@
+{
+  "name": "Maya",
+  "business": "Solo bakery",
+  "city": "Toronto",
+  "description": "I run a one-person bakery in Toronto. I make about $60k a year selling bread and cakes to cafes and at a weekend market. My deck oven is 6 years old and has been repaired twice, and it's the only one I have. I don't have health or dental benefits and I'm not sure if my insurance covers the oven.",
+  "equipment": [
+    {
+      "name": "Deck oven",
+      "ageYears": 6,
+      "repairs": 2,
+      "replacementCost": 6000,
+      "isOnlyOne": true
+    },
+    {
+      "name": "Stand mixer",
+      "ageYears": 3,
+      "repairs": 0,
+      "replacementCost": 1200,
+      "isOnlyOne": true
+    },
+    {
+      "name": "Walk-in fridge",
+      "ageYears": 4,
+      "repairs": 1,
+      "replacementCost": 5000,
+      "isOnlyOne": true
+    }
+  ],
+  "monthlyIncome": [
+    3900,
+    4100,
+    4600,
+    4900,
+    5200,
+    5600,
+    5800,
+    5400,
+    5000,
+    4800,
+    5600,
+    4800
+  ],
+  "insurance": "not_sure",
+  "hasHealthPlan": false,
+  "eiRegistered": false,
+  "lifeEvents": [],
+  "daysWorked": [
+    6,
+    6,
+    6,
+    6
+  ],
+  "repairFundSaved": 500
+}
