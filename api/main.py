@@ -42,7 +42,9 @@ MONTHS = ["Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", 
 app = FastAPI(title="BYOB API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    # localhost for testing + the deployed screens (FRONTEND_URL in .env / Render, comma-separated)
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"]
+    + [u.strip().rstrip("/") for u in os.getenv("FRONTEND_URL", "").split(",") if u.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -158,6 +160,7 @@ def ask_gemini(contents, schema):
     plain_config = types.GenerateContentConfig(**settings)
 
     last_err = None
+    hit_quota = []  # models whose free limit is used up
     models = [MODEL]
     tried_backups = False
     while models:
@@ -190,6 +193,11 @@ def ask_gemini(contents, schema):
                 if "404" in text or "NOT_FOUND" in text:
                     print(f"Model {model} not available, skipping")
                     break
+                if "quota" in text.lower() or "RESOURCE_EXHAUSTED" in text or "429" in text:
+                    # free-tier limit for THIS model; each model has its own, so try the next one
+                    hit_quota.append(model)
+                    print(f"Free Gemini limit reached on {model}, trying another model...")
+                    break
                 if not any(sign in text for sign in BUSY_SIGNS):
                     # not a "busy" error (bad key, unreadable file...): retrying won't help
                     raise HTTPException(502, f"Gemini call failed ({model}): {err}")
@@ -199,6 +207,10 @@ def ask_gemini(contents, schema):
             models = [m for m in backup_models() if m != MODEL]
             if models:
                 print(f"{MODEL} is busy, switching to backup: {models[0]}")
+    if hit_quota:
+        raise HTTPException(429, "Free Gemini limit reached on " + ", ".join(hit_quota) +
+                            ". Per-minute limits reset in about a minute; daily limits reset at midnight "
+                            "Pacific time. Use another key or enable billing in AI Studio.")
     raise HTTPException(503, f"Gemini is busy right now, try again in a minute: {last_err}")
 
 
@@ -286,17 +298,37 @@ def seasonal_income(yearly: int, busy: list, slow: list) -> list:
     return [round(yearly * w / total) for w in weights]
 
 
+# ---------------------------------------------------------------- languages
+
+def clean_language(lang) -> str:
+    """'French', 'Français', 'fr' ... -> a safe language name for the prompt (default English)."""
+    lang = re.sub(r"[^\w\s()-]", "", str(lang or "")).strip()
+    lang = " ".join(lang.split()[:2])[:25]  # a language name, not instructions
+    return lang or "English"
+
+
+def language_rule(lang: str) -> str:
+    """One prompt line so the user reads answers in their own language."""
+    if lang.lower() in ("english", "en", "anglais"):
+        return ""
+    return (f"\nLANGUAGE: write every sentence meant for the user in {lang}. Keep numbers, dollar "
+            "amounts, program names (EI, CPP, Canadian Dental Care Plan, WSIB) and exact quotes from "
+            "documents unchanged.\n")
+
+
 # ---------------------------------------------------------------- /profile
 
 class ProfileIn(BaseModel):
     description: str
+    language: Optional[str] = None  # e.g. "French", "Punjabi"; answers in that language
 
 
 @app.post("/profile")
 def profile(body: ProfileIn):
     """Any user's own description -> their Profile (web/lib/types.ts)."""
     prompt = (
-        "A self-employed person in Canada described their business. Fill in their profile.\n"
+        "A self-employed person in Canada described their business (in any language). "
+        "Fill in their profile, writing the fields in English.\n"
         "Rules:\n"
         "- Use only what they said. Never invent numbers: use null when unknown.\n"
         "- equipment: every tool, machine or vehicle their income depends on. isOnlyOne is true "
@@ -345,6 +377,7 @@ def profile(body: ProfileIn):
         "hasHealthPlan": bool(ai.get("hasHealthPlan")),
         "eiRegistered": bool(ai.get("eiRegistered")),
         "lifeEvents": ai.get("lifeEvents") or [],
+        "language": clean_language(body.language),  # sent back on /gaps and /claim
         # daysWorked and repairFundSaved are left out on purpose: the user didn't say them,
         # and the screens let them fill those in.
     }
@@ -427,6 +460,7 @@ def gaps(p: dict):
         "Always include time off / sick income. Flag EI as high if they are not registered and "
         "have a life event coming. Flag equipment rated 'high' in NUMBERS. Flag insurance if it is "
         "'no' or 'not_sure', and health/dental if hasHealthPlan is false.\n\n"
+        f"{language_rule(clean_language(p.get('language')))}"
         f"RULES:\n{RULES}\n\nPERSON:\n{json.dumps(person)}\n\nNUMBERS:\n{json.dumps(numbers)}"
     )
     result = ask(prompt, list[AIGap])
@@ -452,6 +486,7 @@ async def claim(
     profile: str = Form("{}"),
     item: str = Form("equipment"),
     repair_cost: str = Form("0"),
+    language: str = Form(""),  # or taken from the profile
 ):
     """The user's own policy (PDF or photo) + what broke -> ClaimResult (web/lib/types.ts)."""
     from google.genai import types
@@ -498,6 +533,11 @@ async def claim(
         "Please contact me at [phone/email] with any questions.\\n\\n"
         "Sincerely,\\n<policyholder name>\\n<business name>"
     )
+    lang = clean_language(language or person.get("language"))
+    if language_rule(lang):
+        prompt += language_rule(lang) + (
+            "The claim letter (draft) stays in English, since that's what the insurer reads; "
+            "sourceClauses stay exactly as written in the policy.\n")
     ai = ask([prompt, file_part], AIClaim, file_bytes=data)
 
     insurer_pays = min(money(ai.get("insurerPays")), cost) if cost else money(ai.get("insurerPays"))
