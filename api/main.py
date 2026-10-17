@@ -250,6 +250,35 @@ class AIGap(BaseModel):
     why: str
     fixes: list[str]
     source: str
+    sourceId: str  # one of the [source: ...] tags in rules.md
+
+
+# Official sources behind rules.md. The AI only picks an id; the link and date come from here,
+# so it can never invent a URL. Update "checked" whenever you re-verify a page.
+SOURCES = {
+    "ontario-esa": {"name": "Ontario: Your guide to the Employment Standards Act",
+                    "url": "https://www.ontario.ca/document/your-guide-employment-standards-act-0/vacation",
+                    "checked": "2026-10-17"},
+    "ei-self-employed": {"name": "Canada.ca: EI special benefits for self-employed people",
+                         "url": "https://www.canada.ca/en/employment-social-development/programs/ei/ei-list/reports/self-employed-special-benefits.html",
+                         "checked": "2026-10-17"},
+    "cpp": {"name": "Canada Revenue Agency: CPP for self-employed workers",
+            "url": "https://www.canada.ca/en/revenue-agency/services/tax/canada-pension-plan-cpp-employment-insurance-ei-rulings/cpp-ei-explained/employees-self-employed-workers-responsibilities-benefits-entitlements.html",
+            "checked": "2026-10-17"},
+    "dental": {"name": "Canada.ca: Canadian Dental Care Plan, do you qualify",
+               "url": "https://www.canada.ca/en/services/benefits/dental/dental-care-plan/qualify.html",
+               "checked": "2026-10-17"},
+    "wsib": {"name": "WSIB: Optional insurance",
+             "url": "https://www.wsib.ca/en/businesses/registration-and-coverage/optional-insurance",
+             "checked": "2026-10-17"},
+    "byob": {"name": "BYOB guidance (general advice, not a government rule)", "url": None,
+             "checked": "2026-10-17"},
+}
+
+
+def with_source(source_id: str) -> dict:
+    src = SOURCES.get((source_id or "").strip()) or SOURCES["byob"]
+    return {"sourceName": src["name"], "sourceUrl": src["url"], "checkedOn": src["checked"]}
 
 
 class AIClause(BaseModel):
@@ -424,6 +453,8 @@ def gaps(p: dict):
         "- fixes: 2-3 concrete actions, cheapest or most urgent first; use the dollar amounts in "
         "NUMBERS where they fit; never tell them to buy a specific product\n"
         "- source: the rule you used, short (e.g. 'Ontario ESA: 4% vacation pay')\n"
+        "- sourceId: the [source: ...] tag of the RULES section that rule comes from, exactly as "
+        "written (one of: " + ", ".join(SOURCES) + ")\n"
         "Always include time off / sick income. Flag EI as high if they are not registered and "
         "have a life event coming. Flag equipment rated 'high' in NUMBERS. Flag insurance if it is "
         "'no' or 'not_sure', and health/dental if hasHealthPlan is false.\n\n"
@@ -441,6 +472,7 @@ def gaps(p: dict):
             "why": g.get("why", ""),
             "fixes": g.get("fixes") or [],
             "source": g.get("source") or None,
+            **with_source(g.get("sourceId")),  # sourceName, sourceUrl, checkedOn
         })
     return sorted(out, key=lambda g: rank[g["severity"]])
 
