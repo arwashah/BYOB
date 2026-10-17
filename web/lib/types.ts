@@ -60,9 +60,10 @@ export interface Forecast {
   equipment: EquipmentRisk[];
   weeksCoveredBefore: number;
   weeksCoveredAfter: number;
-  timeOffWeeks: number;
-  volatility: number;
-  totalMonthlySetAside: number;
+  // Optional: the real server (api/forecast.py) returns these, the offline fake data does not.
+  timeOffWeeks?: number;
+  volatility?: number;
+  totalMonthlySetAside?: number;
 }
 
 export interface ClaimResult {
