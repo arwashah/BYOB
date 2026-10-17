@@ -8,7 +8,7 @@ import { useProfile } from '@/lib/useProfile';
 import { isExampleProfile } from '@/lib/examples';
 import { createGroup, leaveGroup, useMyGroup, type MyGroup } from '@/lib/myGroup';
 import type { Pool, PoolRequestResult } from '@/lib/types';
-import { Card, Chip, Loading, Page, STATUS_TONE, Stat, TONE, button, buttonGhost, input, label, money } from '@/components/ui';
+import { Card, Chip, Loading, NumberInput, Page, STATUS_TONE, Stat, TONE, button, buttonGhost, input, label, money } from '@/components/ui';
 import { IconCheck, IconPool, IconX } from '@/components/icons';
 
 const DECISION = {
@@ -147,15 +147,14 @@ function SampleGroup({ exploring = false }: { exploring?: boolean }) {
             <label className={label} htmlFor="amount">Amount needed</label>
             <div className="relative">
               <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-3">$</span>
-              <input
+              <NumberInput
                 id="amount"
-                type="number"
                 min={0}
                 className={`${input} pl-8 ${overGap ? '!border-rose focus:!ring-rose/30' : ''}`}
                 value={amount}
                 aria-invalid={overGap}
                 aria-describedby={overGap ? 'amount-error' : undefined}
-                onChange={(e) => setAmount(Number(e.target.value))}
+                onValue={setAmount}
               />
             </div>
             {overGap && (
@@ -205,14 +204,7 @@ function SampleGroup({ exploring = false }: { exploring?: boolean }) {
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <div className="w-44">
               <label className={label} htmlFor="months">Months in the group</label>
-              <input
-                id="months"
-                type="number"
-                min={0}
-                className={input}
-                value={monthsInGroup}
-                onChange={(e) => setMonthsInGroup(Number(e.target.value))}
-              />
+              <NumberInput id="months" min={0} value={monthsInGroup} onValue={setMonthsInGroup} />
             </div>
             <button onClick={reset} className={`${buttonGhost} !px-4 !py-3 text-[14px]`}>Reset demo</button>
           </div>

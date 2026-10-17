@@ -78,19 +78,25 @@ export function fakeForecast(p: Profile): Forecast {
   const equipment = p.equipment.map(equipmentRisk).sort((a, b) => b.score - a.score);
   const timeOffMonthly = Math.round(average * TIME_OFF_RATE);
   const repairFundMonthly = sum(equipment.filter((e) => e.level !== "low").map((e) => e.monthlySetAside));
-  const weeklyIncome = (average * 12) / 52;
+  const weeklyIncome = (average * 12) / 52 || 1;
   const pool = fakePool();
+  // Same as api/forecast.py: population standard deviation / average (0 = steady, 0.4+ = very seasonal).
+  const stdev = Math.sqrt(avg(income.map((v) => (v - avg(income)) ** 2)));
+  const volatility = average ? Math.round((stdev / average) * 100) / 100 : 0;
 
   return {
     months,
     average,
     leanMonths: months.filter((m) => m.income < average * 0.85).map((m) => m.label),
+    volatility,
     timeOffMonthly,
     repairFundMonthly,
+    totalMonthlySetAside: timeOffMonthly + repairFundMonthly,
     equipment,
     weeksCoveredBefore: 0,
     // a year of 4% savings plus the most the pool could gift
     weeksCoveredAfter: Math.round(((timeOffMonthly * 12 + pool.maxGiftPerClaim) / weeklyIncome) * 10) / 10,
+    timeOffWeeks: Math.round(((timeOffMonthly * 12) / weeklyIncome) * 10) / 10,
   };
 }
 

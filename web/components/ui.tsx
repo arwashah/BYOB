@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logOut, useAuth, useGuest } from "@/lib/cloud";
-import type { ComponentType, ReactNode, SVGProps } from "react";
+import type { ComponentType, InputHTMLAttributes, ReactNode, SVGProps } from "react";
 import type { Severity } from "@/lib/types";
 import { useEffect, useState } from "react";
 import { clearOffline, useOffline } from "@/lib/api";
@@ -300,3 +300,39 @@ export const buttonGhost =
 export const input =
   "w-full rounded-2xl border border-line bg-surface px-4 py-3 text-[15px] text-ink placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand";
 export const label = "mb-2 block text-[13px] font-semibold text-ink-2";
+
+// A number field you can clear and retype. Keeping the text (not the number) as the
+// field's value stops an emptied box snapping back to "0" and turning "200" into "0200".
+export function NumberInput({
+  value,
+  onValue,
+  className = input,
+  ...rest
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type"> & {
+  value: number;
+  onValue: (n: number) => void;
+}) {
+  const [text, setText] = useState(String(value));
+  const [seen, setSeen] = useState(value);
+  // Follow changes from outside (e.g. picking different equipment) without fighting the typing.
+  if (value !== seen) {
+    setSeen(value);
+    if ((text === "" ? 0 : Number(text)) !== value) setText(String(value));
+  }
+  return (
+    <input
+      {...rest}
+      type="number"
+      inputMode="decimal"
+      className={className}
+      value={text}
+      onChange={(e) => {
+        const next = e.target.value.replace(/^0+(?=\d)/, ""); // "0200" -> "200", keeps "0.5"
+        setText(next);
+        const n = next === "" ? 0 : Number(next);
+        setSeen(n);
+        if (Number.isFinite(n)) onValue(n);
+      }}
+    />
+  );
+}

@@ -7,7 +7,7 @@ import { EXAMPLES } from '@/lib/examples';
 import { readDraft, saveDraft, saveProfile, startOver, useSavedProfile } from '@/lib/useProfile';
 import { LANGUAGES } from '@/lib/language';
 import type { Equipment, Insurance, Profile } from '@/lib/types';
-import { Card, MESSAGES, Shell, button, buttonGhost, input, label, money, useRotating } from '@/components/ui';
+import { Card, MESSAGES, NumberInput, Shell, button, buttonGhost, input, label, money, useRotating } from '@/components/ui';
 import { IconArrowRight, IconArrowUp, IconCake, IconCamera, IconCar, IconUpload, IconWrench, IconX } from '@/components/icons';
 
 const EXAMPLE_ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
@@ -294,15 +294,15 @@ export default function OnboardingPage() {
               <div className="mt-4 grid grid-cols-3 gap-3">
                 <div>
                   <label className={label}>Age (yrs)</label>
-                  <input type="number" min={0} className={input} value={e.ageYears} onChange={(ev) => updateEquipment(i, { ageYears: Number(ev.target.value) })} />
+                  <NumberInput min={0} value={e.ageYears} onValue={(n) => updateEquipment(i, { ageYears: n })} />
                 </div>
                 <div>
                   <label className={label}>Repairs</label>
-                  <input type="number" min={0} className={input} value={e.repairs} onChange={(ev) => updateEquipment(i, { repairs: Number(ev.target.value) })} />
+                  <NumberInput min={0} value={e.repairs} onValue={(n) => updateEquipment(i, { repairs: n })} />
                 </div>
                 <div>
                   <label className={label}>To replace</label>
-                  <input type="number" min={0} className={input} value={e.replacementCost} onChange={(ev) => updateEquipment(i, { replacementCost: Number(ev.target.value) })} />
+                  <NumberInput min={0} value={e.replacementCost} onValue={(n) => updateEquipment(i, { replacementCost: n })} />
                 </div>
               </div>
               <label className="mt-4 flex items-center justify-between gap-3 text-[15px] text-ink">

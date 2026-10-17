@@ -7,7 +7,7 @@ import { useLive } from '@/lib/useLive';
 import { useProfile } from '@/lib/useProfile';
 import { textDir } from '@/lib/language';
 import type { ClaimPlan, ClaimResult, Insurance, PlanStep } from '@/lib/types';
-import { Card, Loading, MESSAGES, Page, button, buttonGhost, input, label, money } from '@/components/ui';
+import { Card, Loading, MESSAGES, NumberInput, Page, button, buttonGhost, input, label, money } from '@/components/ui';
 import { IconArrowRight, IconCamera, IconCheck, IconClaim, IconCopy, IconGaps, IconPool, IconUpload, IconWrench, IconX } from '@/components/icons';
 
 const STATUS = {
@@ -219,14 +219,14 @@ export default function ClaimPage() {
             <label className={label} htmlFor="cost">Repair estimate</label>
             <div className="relative">
               <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-3">$</span>
-              <input id="cost" type="number" min={0} className={`${input} pl-8`} value={cost} onChange={(e) => setCostInput(Number(e.target.value))} />
+              <NumberInput id="cost" min={0} className={`${input} pl-8`} value={cost} onValue={setCostInput} />
             </div>
           </div>
           <div>
             <label className={label} htmlFor="fund">Repair fund saved</label>
             <div className="relative">
               <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-3">$</span>
-              <input id="fund" type="number" min={0} className={`${input} pl-8`} value={fund} onChange={(e) => setFundInput(Number(e.target.value))} />
+              <NumberInput id="fund" min={0} className={`${input} pl-8`} value={fund} onValue={setFundInput} />
             </div>
           </div>
         </div>
