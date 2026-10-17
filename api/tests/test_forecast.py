@@ -1,14 +1,10 @@
-from main import compute_forecast
+import json
+from pathlib import Path
 
-# Maya exactly as typed in web/lib/examples.ts (months run Nov..Oct)
-MAYA = {
-    "monthlyIncome": [3900, 4100, 4600, 4900, 5200, 5600, 5800, 5400, 5000, 4800, 5600, 4800],
-    "equipment": [
-        {"name": "Deck oven", "ageYears": 6, "repairs": 2, "replacementCost": 6000, "isOnlyOne": True},
-        {"name": "Stand mixer", "ageYears": 3, "repairs": 0, "replacementCost": 1200, "isOnlyOne": True},
-        {"name": "Walk-in fridge", "ageYears": 4, "repairs": 1, "replacementCost": 5000, "isOnlyOne": True},
-    ],
-}
+from forecast import compute_forecast, income_from_csv
+
+
+MAYA = json.loads((Path(__file__).parent.parent / "data" / "maya.json").read_text())
 
 
 def test_maya_headline_numbers():
@@ -35,8 +31,9 @@ def test_low_risk_gear_is_left_out_of_repair_fund():
 
 
 def test_pool_gift_adds_weeks():
-    out = compute_forecast(MAYA)
-    assert out["weeksCoveredAfter"] >= out["timeOffWeeks"]
+    with_gift = compute_forecast(MAYA, biggest_gift=2000)["weeksCoveredAfter"]
+    without = compute_forecast(MAYA, biggest_gift=0)["weeksCoveredAfter"]
+    assert with_gift > without
 
 
 def test_flat_income_has_no_lean_months():
@@ -47,3 +44,7 @@ def test_flat_income_has_no_lean_months():
 def test_empty_profile_does_not_crash():
     out = compute_forecast({"monthlyIncome": [], "equipment": []})
     assert out["average"] == 0
+
+def test_csv_matches_maya_income():
+    text = (Path(__file__).parent.parent / "data" / "invoices.csv").read_text()
+    assert income_from_csv(text) == MAYA["monthlyIncome"]
