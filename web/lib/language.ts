@@ -1,6 +1,8 @@
 // Languages the user can get their AI answers in. The value is what the server
 // puts in the prompt ("Write all text for the user in {language}").
+// "auto" lets the server answer in whatever language the description is written in.
 export const LANGUAGES: { value: string; label: string }[] = [
+  { value: "auto", label: "Auto language" },
   { value: "English", label: "English" },
   { value: "French", label: "Français" },
   { value: "Punjabi", label: "ਪੰਜਾਬੀ" },
