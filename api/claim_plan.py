@@ -52,7 +52,7 @@ def build_plan(has_insurance: str, repair_cost: int, insurer_pays: Optional[int]
     with pool._lock:
         if member_id:
             check = pool.evaluate_request(pool._pool, member_id, remaining, uncovered_gap=remaining)
-            from_pool = check["approved"]
+            from_pool = check["amount"]
             pool_checks = check["checks"]
         else:
             from_pool = min(remaining, pool.max_payout(pool._pool))

@@ -3,10 +3,99 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { useLive } from '@/lib/useLive';
 import { useProfile } from '@/lib/useProfile';
-import type { Forecast } from '@/lib/types';
-import { Badge, Card, Loading, Page, Stat, TONE, button, money } from '@/components/ui';
-import { IconArrowRight } from '@/components/icons';
+import type { Forecast, NudgeSeverity, Profile } from '@/lib/types';
+import { Badge, Card, Chip, Loading, Page, Stat, TONE, button, money } from '@/components/ui';
+import { IconArrowRight, IconMoon } from '@/components/icons';
+
+const WEEKS = ['3 weeks ago', '2 weeks ago', 'Last week', 'This week'];
+const NUDGE_CHIP: Record<NudgeSeverity, { text: string; tone: 'low' | 'medium' | 'high' }> = {
+  none: { text: 'On track', tone: 'low' },
+  heads_up: { text: 'Heads-up', tone: 'medium' },
+  strong: { text: 'Take a break', tone: 'high' },
+};
+
+// "Should I take a break?" The steppers respond instantly; the answer follows.
+function NudgeCard({ profile, forecast }: { profile: Profile; forecast: Forecast }) {
+  const [days, setDays] = useState<number[]>(profile.daysWorked ?? [5, 5, 5, 5]);
+  const weeklyIncome = (forecast.average * 12) / 52;
+  const fundWeeks = weeklyIncome > 0 ? Math.round(((forecast.timeOffMonthly * 12) / weeklyIncome) * 10) / 10 : 0;
+  const nudge = useLive((signal) => api.nudge(days, fundWeeks, profile.name, signal), [days.join(','), fundWeeks, profile.name]);
+
+  const change = (i: number, delta: number) =>
+    setDays((d) => d.map((v, j) => (j === i ? Math.min(7, Math.max(0, v + delta)) : v)));
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
+            <IconMoon width={20} height={20} />
+          </span>
+          <h2 className="title text-[19px] text-ink">Time to rest?</h2>
+        </div>
+        {nudge && <Chip tone={NUDGE_CHIP[nudge.severity].tone}>{NUDGE_CHIP[nudge.severity].text}</Chip>}
+      </div>
+      <p className="mt-2 text-[14px] text-ink-2">Days you worked each week.</p>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {days.map((d, i) => (
+          <div key={WEEKS[i]} className="rounded-2xl bg-sunken p-3 text-center">
+            <p className="text-[12px] font-medium text-ink-3">{WEEKS[i]}</p>
+            <div className="mt-1 flex items-center justify-between gap-1">
+              <button
+                onClick={() => change(i, -1)}
+                disabled={d === 0}
+                aria-label={`One less day, ${WEEKS[i]}`}
+                className="pressable grid h-11 w-11 place-items-center rounded-full text-[20px] text-ink-2 hover:bg-surface disabled:opacity-30"
+              >
+                −
+              </button>
+              <span className="display text-[1.75rem] text-ink" aria-live="polite">{d}</span>
+              <button
+                onClick={() => change(i, 1)}
+                disabled={d === 7}
+                aria-label={`One more day, ${WEEKS[i]}`}
+                className="pressable grid h-11 w-11 place-items-center rounded-full text-[20px] text-ink-2 hover:bg-surface disabled:opacity-30"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div aria-live="polite">
+        {nudge && (
+          <div className="mt-5">
+            <p className="text-[16px] font-medium leading-relaxed text-ink">{nudge.message}</p>
+            {nudge.reasons.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {nudge.reasons.map((r) => (
+                  <li key={r} className="text-[13px] text-ink-2">· {r}</li>
+                ))}
+              </ul>
+            )}
+            {nudge.resources.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-line p-4">
+                <p className="mb-2 text-[13px] font-semibold text-ink-2">Free support, any time</p>
+                <ul className="space-y-1.5">
+                  {nudge.resources.map((r) => (
+                    <li key={r.name} className="text-[14px] text-ink">
+                      <b>{r.name}</b> <span className="text-ink-2">· {r.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="mt-3 text-[12px] text-ink-3">{nudge.disclaimer}</p>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 export default function ForecastPage() {
   const profile = useProfile();
@@ -82,6 +171,8 @@ export default function ForecastPage() {
           ))}
         </div>
       </Card>
+
+      {profile && <NudgeCard key={profile.name} profile={profile} forecast={f} />}
 
       <div className="pt-4">
         <Link href="/claim" className={button}>

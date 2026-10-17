@@ -23,6 +23,8 @@ export interface Profile {
   hasHealthPlan: boolean;
   eiRegistered: boolean;
   lifeEvents: string[]; // e.g. "baby", "caregiving"
+  daysWorked?: number[]; // days worked in each of the last 4 weeks, oldest first
+  repairFundSaved?: number; // already set aside for repairs
 }
 
 export type Severity = "high" | "medium" | "low";
@@ -65,12 +67,32 @@ export interface ClaimResult {
   uncovered: number;
   draft: string;
   source?: string; // quoted clause from the policy
+  sourceClauses?: { section: string; quote: string }[]; // every clause the answer relies on
+  calculation?: { label: string; amount: number }[]; // how insurerPays was worked out
+  deadline?: string;
 }
 
 export interface PoolMember {
   name: string;
   trade: string;
   monthsInGroup: number;
+  isYou?: boolean;
+}
+
+export type PoolStatus = "healthy" | "watch" | "low";
+
+export interface PoolHealth {
+  pledged: number; // total members have pledged from their own savings
+  maxGiftNow: number;
+  fullGiftsLeft: number; // full-size gifts the pledges can still cover, one after another
+  status: PoolStatus;
+}
+
+export interface Gift {
+  date: string;
+  member: string;
+  amount: number;
+  note: string;
 }
 
 export interface Pool {
@@ -81,10 +103,79 @@ export interface Pool {
   maxMonths: number;
   waitingMonths: number;
   activeClaims: number;
+  health?: PoolHealth;
+  gifts?: Gift[]; // newest first
+  disclaimer?: string;
+}
+
+export interface PoolCheck {
+  rule: string;
+  passed: boolean;
+  detail: string;
 }
 
 export interface PoolRequestResult {
   approved: boolean;
   amount: number;
   message: string;
+  decision?: "approved" | "partial" | "denied";
+  checks?: PoolCheck[]; // one per rule, so the screen can say why
+  pool?: Pool; // the pool after this request
+}
+
+export interface PoolRequestInput {
+  amount: number;
+  monthsInGroup: number;
+  uncoveredGap?: number;
+  name?: string;
+  trade?: string;
+  reason?: string;
+}
+
+export interface PoolWhatIf {
+  claims: number;
+  gifts: number[];
+  claimsFullyCovered: number;
+  perMember: number;
+  survives: boolean;
+  message: string;
+}
+
+export interface PlanStep {
+  step: "insurance" | "fund" | "pool" | "backup";
+  title: string;
+  amount: number;
+  note: string;
+}
+
+export interface ClaimPlanInput {
+  insurance: Insurance;
+  repairCost: number;
+  insurerPays?: number;
+  fundBalance: number;
+  equipment: string;
+  weeklyExpenses?: number;
+}
+
+export interface ClaimPlan {
+  branch: Insurance;
+  repairCost: number;
+  insurerPays: number;
+  uncoveredGap: number;
+  steps: PlanStep[];
+  stillUncovered: number;
+  checklist: string[]; // filled when the user isn't sure what their insurance covers
+  weeksCovered: number | null;
+}
+
+export type NudgeSeverity = "none" | "heads_up" | "strong";
+
+export interface Nudge {
+  shouldTakeBreak: boolean;
+  severity: NudgeSeverity;
+  message: string;
+  weeksOffCovered: number;
+  reasons: string[];
+  resources: { name: string; detail: string }[];
+  disclaimer: string;
 }

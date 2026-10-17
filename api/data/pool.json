@@ -3,7 +3,7 @@
   "monthly_contribution": 40,
   "balance": 9600,
   "members": [
-    {"id": "maya", "first_name": "Maya", "trade": "Baker", "joined": "2025-03-01", "active": true},
+    {"id": "you", "first_name": "You", "trade": "Solo business", "joined": "2026-02-15", "active": true},
     {"id": "ravi", "first_name": "Ravi", "trade": "Plumber", "joined": "2025-03-01", "active": true},
     {"id": "lena", "first_name": "Lena", "trade": "Graphic designer", "joined": "2025-03-15", "active": true},
     {"id": "omar", "first_name": "Omar", "trade": "Electrician", "joined": "2025-04-01", "active": true},

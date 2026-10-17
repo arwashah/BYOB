@@ -3,13 +3,18 @@
 // baker, a photographer and a courier still get different results.
 
 import type {
+  ClaimPlan,
+  ClaimPlanInput,
   ClaimResult,
   Equipment,
   EquipmentRisk,
   Forecast,
   Gap,
+  Nudge,
+  PlanStep,
   Pool,
   PoolRequestResult,
+  PoolWhatIf,
   Profile,
 } from "./types";
 import { DEFAULT_EXAMPLE } from "./examples";
@@ -217,6 +222,68 @@ export function fakePoolRequest(amount: number, monthsInGroup: number, pool = fa
     approved: true,
     amount: Math.round(gift),
     message: `Your group has pledged up to $${Math.round(gift).toLocaleString()}. Members send it from their own savings. It's a gift, not a guarantee.`,
+  };
+}
+
+// Offline stand-ins for Person 4's endpoints. Simpler than the server's rules, but
+// the same shape, so the screens work without the server.
+
+export function fakeWhatIf(claims: number, pool = fakePool()): PoolWhatIf {
+  const capacity = pool.members.length * pool.pledgePerMember;
+  const perClaim = Math.min(pool.maxGiftPerClaim, capacity / claims);
+  const covered = perClaim >= pool.maxGiftPerClaim ? claims : 0;
+  return {
+    claims,
+    gifts: Array(claims).fill(Math.round(perClaim)),
+    claimsFullyCovered: covered,
+    perMember: Math.round((perClaim * claims) / pool.members.length),
+    survives: covered === claims,
+    message:
+      covered === claims
+        ? `The group can fully support ${claims} claim${claims > 1 ? "s" : ""} at once.`
+        : `With ${claims} claims at once, each gift would be reduced to about $${Math.round(perClaim).toLocaleString()}.`,
+  };
+}
+
+export function fakeClaimPlan(input: ClaimPlanInput, pool = fakePool()): ClaimPlan {
+  const insurer = input.insurance === "yes" ? Math.min(input.insurerPays ?? 0, input.repairCost) : 0;
+  const gap = input.repairCost - insurer;
+  const fromFund = Math.min(input.fundBalance, gap);
+  const fromPool = Math.min(gap - fromFund, pool.maxGiftPerClaim);
+  const steps: PlanStep[] = [
+    { step: "insurance", title: input.insurance === "yes" ? "Insurance claim" : "No insurance", amount: insurer, note: "" },
+    { step: "fund", title: "Your repair fund", amount: fromFund, note: "" },
+  ];
+  if (gap - fromFund > 0) steps.push({ step: "pool", title: "Ask your group for a gift", amount: fromPool, note: "Pledged by your group, not guaranteed." });
+  steps.push({ step: "backup", title: "Keep working while it's fixed", amount: 0, note: "Rent shared equipment or workspace, or ask a group member with spare capacity." });
+  return {
+    branch: input.insurance,
+    repairCost: input.repairCost,
+    insurerPays: insurer,
+    uncoveredGap: gap,
+    steps,
+    stillUncovered: gap - fromFund - fromPool,
+    checklist: [],
+    weeksCovered: input.weeklyExpenses ? Math.round(((input.fundBalance + pool.maxGiftPerClaim) / input.weeklyExpenses) * 10) / 10 : null,
+  };
+}
+
+export function fakeNudge(daysWorked: number[], fundWeeks: number, name?: string): Nudge {
+  let streak = 0;
+  for (let i = daysWorked.length - 1; i >= 0 && daysWorked[i] >= 6; i--) streak++;
+  const severity = streak >= 4 ? "strong" : streak >= 2 ? "heads_up" : "none";
+  const text =
+    severity === "none"
+      ? "your workload looks sustainable."
+      : `you've worked 6-day weeks for ${streak} weeks straight and your fund covers ${fundWeeks} weeks off.`;
+  return {
+    shouldTakeBreak: severity !== "none",
+    severity,
+    message: name ? `${name}, ${text}` : text[0].toUpperCase() + text.slice(1),
+    weeksOffCovered: fundWeeks,
+    reasons: severity === "none" ? [] : [`${streak} weeks in a row with 6+ working days`],
+    resources: [],
+    disclaimer: "Not medical advice.",
   };
 }
 

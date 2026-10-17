@@ -19,7 +19,6 @@ TIME_OFF_RATE = 0.04      # set aside 4% of each payment, like employer vacation
 
 # Free supports. Verify on canada.ca / ontario.ca before pitching.
 RESOURCES = [
-    {"name": "988 Suicide Crisis Helpline", "detail": "Call or text 988, 24/7, anywhere in Canada"},
     {"name": "211 Ontario", "detail": "Call 211 or visit 211ontario.ca to find local mental health services"},
 ]
 

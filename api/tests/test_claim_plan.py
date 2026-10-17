@@ -6,21 +6,21 @@ def amounts(plan):
 
 
 def test_maya_insured_fund_then_pool():
-    p = build_plan("yes", 6000, insurer_pays=3500, fund_balance=500, member_id="maya",
+    p = build_plan("yes", 6000, insurer_pays=3500, fund_balance=500, member_id="you",
                    equipment="oven", weekly_expenses=1200)
     assert p["uncovered_gap"] == 2500
     assert amounts(p) == {"insurance": 3500, "fund": 500, "pool": 2000, "backup": 0}
     assert p["still_uncovered"] == 0
     assert all(c["passed"] for c in p["pool_checks"])
-    assert p["weeks_covered"] == round((500 + 2880) / 1200, 1)
+    assert p["weeks_covered"] == round((500 + 2000) / 1200, 1)
 
 
 def test_no_insurance_skips_policy():
     p = build_plan("no", 6000, fund_balance=1000)
     assert p["insurer_pays"] == 0
     assert amounts(p)["fund"] == 1000
-    assert amounts(p)["pool"] == 2880          # capped at 30% of the pool
-    assert p["still_uncovered"] == 6000 - 1000 - 2880
+    assert amounts(p)["pool"] == 2000          # capped at $2,000 per claim
+    assert p["still_uncovered"] == 6000 - 1000 - 2000
     assert p["checklist"] == []
 
 

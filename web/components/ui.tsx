@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import type { Severity } from "@/lib/types";
+import { useEffect } from "react";
+import { clearOffline, useOffline } from "@/lib/api";
 import { IconClaim, IconForecast, IconGaps, IconPool, IconStart, Logo, Wordmark } from "./icons";
 
 export const APP_NAME = "BYOB";
@@ -24,9 +26,43 @@ function Header() {
           <Logo />
           <Wordmark className="text-[26px] text-ink" />
         </Link>
-        <span className="hidden text-xs text-ink-3 sm:block">Informs, never sells · Not financial advice</span>
+        <OfflineChip />
       </div>
     </header>
+  );
+}
+
+// Honest status: say so whenever a screen is showing stand-in data.
+function OfflineChip() {
+  const offline = useOffline();
+  const path = usePathname();
+  useEffect(() => clearOffline(), [path]);
+  if (!offline) return <span className="hidden text-xs text-ink-3 sm:block">Informs, never sells · Not financial advice</span>;
+  return (
+    <span
+      role="status"
+      title="The server didn't answer part of this screen, so it shows sample numbers."
+      className="inline-flex items-center gap-1.5 rounded-full bg-honey-soft px-3 py-1 text-xs font-semibold text-honey"
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-honey" />
+      Sample data
+    </span>
+  );
+}
+
+export const STATUS_TONE: Record<"healthy" | "watch" | "low", { text: string; tone: Severity }> = {
+  healthy: { text: "Healthy", tone: "low" },
+  watch: { text: "Stretched", tone: "medium" },
+  low: { text: "Low", tone: "high" },
+};
+
+// Small coloured label, using the same tones as risk badges.
+export function Chip({ tone, children }: { tone: Severity; children: ReactNode }) {
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${TONE[tone].chip}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${TONE[tone].dot}`} />
+      {children}
+    </span>
   );
 }
 

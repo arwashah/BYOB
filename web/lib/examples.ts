@@ -8,9 +8,9 @@ export const EXAMPLES: Record<string, Profile> = {
     business: "Solo bakery",
     city: "Toronto",
     description:
-      "I run a one-person bakery in Toronto. I make about $60k a year selling bread and cakes to cafes and at a weekend market. My convection oven is 6 years old and has been repaired twice, and it's the only one I have. I don't have health or dental benefits and I'm not sure if my insurance covers the oven.",
+      "I run a one-person bakery in Toronto. I make about $60k a year selling bread and cakes to cafes and at a weekend market. My deck oven is 6 years old and has been repaired twice, and it's the only one I have. I don't have health or dental benefits and I'm not sure if my insurance covers the oven.",
     equipment: [
-      { name: "Convection oven", ageYears: 6, repairs: 2, replacementCost: 8000, isOnlyOne: true },
+      { name: "Deck oven", ageYears: 6, repairs: 2, replacementCost: 6000, isOnlyOne: true },
       { name: "Stand mixer", ageYears: 3, repairs: 0, replacementCost: 1200, isOnlyOne: true },
       { name: "Walk-in fridge", ageYears: 4, repairs: 1, replacementCost: 5000, isOnlyOne: true },
     ],
@@ -19,6 +19,8 @@ export const EXAMPLES: Record<string, Profile> = {
     hasHealthPlan: false,
     eiRegistered: false,
     lifeEvents: [],
+    daysWorked: [6, 6, 6, 6],
+    repairFundSaved: 500,
   },
   dev: {
     name: "Dev",
@@ -36,6 +38,8 @@ export const EXAMPLES: Record<string, Profile> = {
     hasHealthPlan: false,
     eiRegistered: false,
     lifeEvents: ["baby"],
+    daysWorked: [4, 5, 6, 6],
+    repairFundSaved: 1200,
   },
   priya: {
     name: "Priya",
@@ -52,6 +56,8 @@ export const EXAMPLES: Record<string, Profile> = {
     hasHealthPlan: false,
     eiRegistered: false,
     lifeEvents: [],
+    daysWorked: [5, 5, 5, 5],
+    repairFundSaved: 300,
   },
 };
 

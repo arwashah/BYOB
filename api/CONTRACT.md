@@ -1,71 +1,70 @@
-# API contract (Person 4 endpoints + what we need from /claim)
+# API contract (Person 4 endpoints + what the screens expect from /claim)
 
-All amounts are whole dollars (CAD). Every endpoint has live docs at `http://localhost:8000/docs`.
+All amounts are whole dollars (CAD). Live docs: `http://localhost:8000/docs`.
+The server answers in snake_case; `web/lib/adapters.ts` maps it to the camelCase types in `web/lib/types.ts`.
 
-## Setup for main.py (Person 2)
+## Running it
 
-```python
-from fastapi.middleware.cors import CORSMiddleware
-import pool, nudge, claim_plan
-
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"],
-                   allow_methods=["*"], allow_headers=["*"])
-for module in (pool, nudge, claim_plan):
-    app.include_router(module.router)
+```
+cd api && python -m uvicorn dev_main:app --reload      # needs: pip install fastapi uvicorn
+cd web && npm run dev                                   # web/.env.local: NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-Pool state lives in memory: restarting the server (including `--reload`) resets it to `data/pool.json`.
+`dev_main.py` has our three routers, CORS for `http://localhost:3000`, and a stand-in `/claim` that returns
+`demo_assets/maya_claim_result.json`. **Person 2:** copy its CORS block and `include_router` loop into `main.py`,
+then delete the stand-in. Pool state lives in memory: a server restart resets it to `data/pool.json`.
+
+If the server is unreachable, the screens fall back to `web/lib/fake.ts` and show an "Offline demo data" chip.
 
 ---
 
 ## GET /pool
-What the group has pledged, plus health, members, recent gifts and rules.
 ```json
 {
   "name": "Toronto Solo Makers Circle",
   "monthly_contribution": 40,
-  "health": {"balance": 9600, "members": 12, "monthly_inflow": 480,
-             "reserve_ratio": 3.2, "max_payout_now": 2880, "status": "healthy"},
-  "members": [{"id": "maya", "first_name": "Maya", "trade": "Baker"}],
-  "ledger": [{"date": "2026-10-01", "type": "contribution", "member_id": null, "amount": 480,
-              "note": "October contributions (12 members)", "member": null}],
-  "rules": {"waiting_period_days": 90, "one_payout_per_days": 365, "max_per_request": 3000,
+  "pledge_per_member": 800, "max_gift_per_claim": 2000, "max_months": 3, "waiting_months": 3, "active_claims": 0,
+  "health": {"balance": 9600, "members": 12, "monthly_inflow": 480, "reserve_ratio": 4.8,
+             "max_payout_now": 2000, "status": "healthy"},
+  "members": [{"id": "maya", "first_name": "Maya", "trade": "Baker", "months_in_group": 19, "is_you": false}],
+  "ledger": [{"date": "2026-10-01", "type": "contribution", "member_id": null, "amount": 480, "note": "...", "member": null}],
+  "rules": {"waiting_period_days": 90, "one_payout_per_days": 365, "max_per_request": 2000,
             "max_share_of_balance": 0.3, "reserve_floor": 3000},
-  "disclaimer": "Mutual aid, not insurance. ..."
+  "disclaimer": "Mutual aid, not insurance. BYOB never holds money: ..."
 }
 ```
-`status` is `healthy` | `watch` | `low`. `ledger` is newest first, last 10 entries.
-
-## POST /pool/join
-Adds the current user (any business). `is_new: true` makes them fail the 3-month wait, to demo that rule.
-```json
-// request
-{"name": "Sam", "trade": "Courier", "is_new": false}
-// response
-{"member": {"id": "sam", "first_name": "Sam", "trade": "Courier", "joined": "2026-06-19", "active": true},
- "pool": { "...same as GET /pool..." }}
-```
-Use the returned `member.id` for `/pool/request` and `/claim/plan`.
+- `health.balance` is what members have pledged in total (shown as "Left to pledge").
+- `status`: `healthy` (a full $2,000 gift is possible), `watch` (only a reduced gift), `low` (none until next month's pledges).
+- `ledger` is newest first, last 10 entries. `active_claims` = gifts in the last 30 days.
 
 ## POST /pool/request
-Ask the group for a gift. Approved amounts are recorded immediately.
+The current user needs no id: leave out `member_id` and they become member `"you"`.
 ```json
-// request
-{"member_id": "maya", "amount": 2000, "reason": "Oven replacement", "uncovered_gap": 2000}
+// request (only amount is required)
+{"amount": 2000, "months_in_group": 8, "uncovered_gap": 2000, "name": "Maya", "trade": "Solo bakery",
+ "reason": "Uncovered repair cost"}
 // response
-{"decision": "approved", "requested": 2000, "approved": 2000,
- "checks": [{"rule": "waiting_period", "passed": true, "detail": "Member for 595 days (needs 90)"}],
+{"approved": true, "amount": 2000,
+ "message": "Your group has pledged $2,000. Members send it from their own savings. It's a gift, not a guarantee.",
+ "decision": "approved", "requested": 2000,
+ "checks": [{"rule": "waiting_period", "passed": true, "detail": "In the group 8 months (needs 3)"}],
  "pool": { "...updated GET /pool..." }}
 ```
-`decision` is `approved` | `partial` | `denied`. Show every `checks[].detail` on screen (that's the "why"). Rules: `member`, `waiting_period`, `one_per_year`, `insurance_first`, `pool_limits`.
+- `decision`: `approved` | `partial` | `denied`. When denied, `message` is the plain-language reason
+  (e.g. "New members can ask for help after 3 months. You've been in the group 1 month.").
+- Rules in `checks`: `member`, `waiting_period`, `one_per_year`, `insurance_first`, `pool_limits`.
+- Gift limit: the lowest of $2,000, 30% of pledges, or what keeps $3,000 pledged.
 
 ## GET /pool/whatif?claims=3&amount=2000
-"Can the group survive several claims at once?"
 ```json
 {"claims": 3, "amount_each": 2000, "gifts": [2000, 2000, 1680], "claims_fully_covered": 2,
- "total_gifted": 5680, "balance_after": 3920, "survives": false,
- "message": "The group can fully support 2 of 3 simultaneous claims and still keeps $3,920 in reserve."}
+ "total_gifted": 5680, "per_member": 473, "balance_after": 3920, "survives": false,
+ "message": "The group can fully support 2 of 3 claims at once and still keeps $3,920 pledged."}
 ```
+
+## POST /pool/join
+Adds a named member (any business). `is_new: true` makes them fail the waiting period.
+`{"name": "Sam", "trade": "Courier", "is_new": false}` -> `{"member": {...}, "pool": {...}}`
 
 ## POST /pool/reset
 Demo only. Reloads the seed data and returns `GET /pool`.
@@ -73,56 +72,49 @@ Demo only. Reloads the seed data and returns `GET /pool`.
 ---
 
 ## POST /claim/plan
-The recovery plan after something breaks, for insured, uninsured and "not sure" users. It previews the pool and doesn't record a gift; the user confirms on the pool page via `/pool/request`.
+The recovery plan after something breaks, for insured, uninsured and "not sure" users. It previews the group
+gift but doesn't record it; the user confirms on the pool page.
 ```json
 // request
 {"has_insurance": "yes", "repair_cost": 6000, "insurer_pays": 3500, "fund_balance": 500,
- "member_id": "maya", "equipment": "oven", "weekly_expenses": 1200}
+ "equipment": "deck oven", "weekly_expenses": 1131}
 // response
 {"branch": "yes", "repair_cost": 6000, "insurer_pays": 3500, "uncovered_gap": 2500,
  "steps": [
    {"step": "insurance", "title": "Insurance claim", "amount": 3500, "note": "From your policy"},
    {"step": "fund", "title": "Your repair fund", "amount": 500, "note": "From the $500 you've set aside"},
    {"step": "pool", "title": "Ask your group for a gift", "amount": 2000, "note": "Pledged by your group, not guaranteed. ..."},
-   {"step": "backup", "title": "Keep working while it's fixed", "amount": 0, "note": "While your oven is out, ..."}],
- "still_uncovered": 0, "pool_checks": [], "checklist": [], "weeks_covered": 2.8}
+   {"step": "backup", "title": "Keep working while it's fixed", "amount": 0, "note": "While your deck oven is out, ..."}],
+ "still_uncovered": 0, "pool_checks": [], "checklist": [], "weeks_covered": 2.2}
 ```
-- `has_insurance`: `yes` | `no` | `not_sure`. For `no`/`not_sure` leave out `insurer_pays`. `not_sure` fills `checklist`.
-- The `pool` step is omitted when the fund covers the whole gap.
-- `weeks_covered` = (fund_balance + max gift the group can give now) / weekly_expenses, for the "before 0 weeks, after X weeks" beat. It's `null` without `weekly_expenses`.
-- **Needs from Person 3 (/forecast):** `fund_balance` (repair fund saved) and `weekly_expenses`. Please confirm the field names.
+- `has_insurance`: `yes` | `no` | `not_sure`. `not_sure` fills `checklist`. The `pool` step is left out when the fund covers the gap.
+- `weeks_covered` = (fund_balance + biggest group gift now) / weekly_expenses; `null` without `weekly_expenses`.
+- The screen uses `fund_balance` from the "Repair fund saved" field (prefilled from `profile.repairFundSaved`).
 
 ## POST /nudge
-"Should this user take a break?"
 ```json
 // request (oldest week first)
-{"name": "Maya", "fund_weeks_covered": 3,
- "work_log": [{"week": "2026-09-21", "days_worked": 6}, {"week": "2026-09-28", "days_worked": 6},
-              {"week": "2026-10-05", "days_worked": 6}, {"week": "2026-10-12", "days_worked": 6}]}
+{"name": "Maya", "fund_weeks_covered": 2.1, "work_log": [{"days_worked": 6}, {"days_worked": 6}, {"days_worked": 6}, {"days_worked": 6}]}
 // response
 {"should_take_break": true, "severity": "strong",
- "message": "Maya, you've worked 6-day weeks for 4 weeks straight and your fund covers 3 weeks off. Consider booking a week off.",
- "weeks_off_covered": 3.0,
- "reasons": ["4 weeks in a row with 6+ working days", "Averaging 6.0 working days a week over the last 4 weeks"],
- "resources": [{"name": "988 Suicide Crisis Helpline", "detail": "Call or text 988, 24/7, anywhere in Canada"}],
- "disclaimer": "Not medical advice. ..."}
+ "message": "Maya, you've worked 6-day weeks for 4 weeks straight and your fund covers 2.1 weeks off. Consider booking a week off.",
+ "weeks_off_covered": 2.1, "reasons": ["4 weeks in a row with 6+ working days", "..."],
+ "resources": [{"name": "211 Ontario", "detail": "..."}], "disclaimer": "Not medical advice. ..."}
 ```
-`severity` is `none` | `heads_up` (2+ long weeks in a row, or a 4-week average above 5.5 days) | `strong` (4+ long weeks in a row).
-- **Needs:** `work_log` in the example user files (Person 3), and `fund_weeks_covered` from `/forecast`.
+`severity`: `none` | `heads_up` (2+ long weeks in a row, or a 4-week average above 5.5 days) | `strong` (4+ in a row).
+The screen sends `profile.daysWorked` and works out fund weeks as a year of 4% time-off savings / weekly income.
 
 ---
 
-## Proposed /claim response (Person 2, please confirm)
-The claim page is built against `demo_assets/maya_claim_result.json`, which uses this shape:
-```json
-{"status": "partial", "equipment": "Deck oven (Bakemaster DX-3)", "repair_cost": 6000,
- "insurer_pays": 3500, "uncovered_gap": 2500,
- "calculation": [{"label": "Age rule: oven is 6 years old, paid at 70%", "amount": 4200}],
- "covered_items": ["..."], "excluded_items": ["..."], "required_documents": ["..."],
- "deadline": "Notify the insurer in writing within 30 days of the breakdown",
- "source_clauses": [{"section": "2. Equipment Breakdown Coverage", "quote": "..."}],
- "claim_draft": "To: Maple Mutual ..."}
-```
-- `status`: `covered` | `partial` | `not_covered`.
-- `source_clauses` are exact quotes from the PDF, so the UI can show where each answer came from.
-- The claim page passes `insurer_pays` to `/claim/plan`, then the pool step's amount to `/pool/request` as both `amount` and `uncovered_gap`.
+## What the screens expect from /claim (Person 2)
+`ClaimResult` in `web/lib/types.ts`, camelCase. `demo_assets/maya_claim_result.json` is a full example. Required:
+`status` (`covered` | `partial` | `not_covered`), `summary`, `covered[]`, `notCovered[]`, `documents[]`,
+`insurerPays`, `uncovered`, `draft`, `source`. Optional, shown when present:
+- `sourceClauses: [{section, quote}]`: exact quotes from the PDF, so the screen shows where each answer came from.
+- `calculation: [{label, amount}]`: how `insurerPays` was worked out (cost, age rule, cap, deductible).
+- `deadline`: when the insurer must be notified.
+
+## Asks for Person 3 (/forecast)
+- The screens currently derive the time-off weeks and weekly income from `average` and `timeOffMonthly`.
+  A `timeOffWeeks` field would be cleaner.
+- `repairFundSaved` and `daysWorked` are new optional `Profile` fields (set in `web/lib/examples.ts`).
