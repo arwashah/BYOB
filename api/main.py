@@ -31,6 +31,7 @@ from pydantic import BaseModel
 import claim_plan
 import nudge
 import pool
+import forecast as forecast_maths  # Person 3's forecast.py
 
 HERE = Path(__file__).parent
 load_dotenv(HERE / ".env")  # GEMINI_API_KEY (and optional GEMINI_MODEL)
@@ -391,57 +392,16 @@ def profile(body: ProfileIn):
 
 
 # ---------------------------------------------------------------- /forecast
-# Plain maths, same rules as web/lib/fake.ts so the numbers match offline mode.
-# Arwa: if you write a better version, replace compute_forecast and keep the output keys.
-
-def equipment_risk(e: dict) -> dict:
-    age, repairs = money(e.get("ageYears")), money(e.get("repairs"))
-    only_one = e.get("isOnlyOne", True)
-    score = min(100, round(age / 10 * 50 + repairs * 15 + (20 if only_one else 0)))
-    level = "high" if score >= 70 else "medium" if score >= 40 else "low"
-    months = {"high": 24, "medium": 48, "low": 96}[level]
-    reason = ", ".join([
-        f"{age} years old",
-        f"{repairs} repair{'' if repairs == 1 else 's'}",
-        "your only one" if only_one else "you have a backup",
-    ])
-    return {
-        "name": e.get("name", "Equipment"),
-        "score": score,
-        "level": level,
-        "reason": reason,
-        "monthlySetAside": round(money(e.get("replacementCost")) / months),
-    }
-
+# The maths lives in Arwa's forecast.py (Person 3). We only add the pool's biggest gift.
 
 def compute_forecast(p: dict) -> dict:
-    income = [money(v) for v in p.get("monthlyIncome") or []]
-    if len(income) != 12:
-        income = [income[0] if income else 0] * 12
-    average = round(sum(income) / 12)
-    months = [{"label": MONTHS[i], "income": v} for i, v in enumerate(income)]
-    equipment = sorted((equipment_risk(e) for e in p.get("equipment") or []),
-                       key=lambda r: r["score"], reverse=True)
-    time_off = round(average * TIME_OFF_RATE)
-    weekly_income = average * 12 / 52 or 1
     with pool._lock:
         biggest_gift = pool.max_payout(pool._pool)
-    return {
-        "months": months,
-        "average": average,
-        "leanMonths": [m["label"] for m in months if m["income"] < average * 0.85],
-        "timeOffMonthly": time_off,
-        "repairFundMonthly": sum(r["monthlySetAside"] for r in equipment if r["level"] != "low"),
-        "equipment": equipment,
-        "weeksCoveredBefore": 0,
-        # a year of 4% savings plus the biggest gift the group can give right now
-        "weeksCoveredAfter": round((time_off * 12 + biggest_gift) / weekly_income, 1),
-        "timeOffWeeks": round(time_off * 12 / weekly_income, 1),
-    }
+    return forecast_maths.compute_forecast(p, biggest_gift=biggest_gift)
 
 
 @app.post("/forecast")
-def forecast(p: dict):
+def forecast_route(p: dict):
     return compute_forecast(p)
 
 
