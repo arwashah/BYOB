@@ -140,6 +140,8 @@ export default function ClaimPage() {
         signal,
       ),
     [branch, cost, fund, broken, result?.insurerPays, weeklyIncome],
+    150,
+    profile !== null && cost > 0, // the server needs a real repair cost
   );
 
   if (!profile) return <Page title="Something broke?"><Loading /></Page>;
