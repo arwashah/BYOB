@@ -77,7 +77,7 @@ export default function OnboardingPage() {
   const pickExample = (key: string) => {
     const ex = EXAMPLES[key];
     setDescription(ex.description);
-    setProfile({ ...structuredClone(ex), language: language === 'auto' ? 'English' : language });
+    setProfile({ ...structuredClone(ex), example: key, language: language === 'auto' ? 'English' : language });
     setRoughMonthly('');
     setCsvNote(`Using ${ex.name}’s last 12 months of invoices.`);
     setStep(1);

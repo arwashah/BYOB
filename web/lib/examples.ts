@@ -62,3 +62,8 @@ export const EXAMPLES: Record<string, Profile> = {
 };
 
 export const DEFAULT_EXAMPLE = EXAMPLES.maya;
+
+// Example users live in the sample group; everyone else starts without one.
+// The description check covers profiles saved before `example` existed.
+export const isExampleProfile = (p: Profile) =>
+  !!p.example || Object.values(EXAMPLES).some((e) => e.description === p.description);

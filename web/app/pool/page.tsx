@@ -5,9 +5,11 @@ import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useLive } from '@/lib/useLive';
 import { useProfile } from '@/lib/useProfile';
+import { isExampleProfile } from '@/lib/examples';
+import { createGroup, leaveGroup, useMyGroup, type MyGroup } from '@/lib/myGroup';
 import type { Pool, PoolRequestResult } from '@/lib/types';
 import { Card, Chip, Loading, Page, STATUS_TONE, Stat, TONE, button, buttonGhost, input, label, money } from '@/components/ui';
-import { IconCheck, IconX } from '@/components/icons';
+import { IconCheck, IconPool, IconX } from '@/components/icons';
 
 const DECISION = {
   approved: { text: 'Approved', tone: 'low' },
@@ -15,7 +17,8 @@ const DECISION = {
   denied: { text: 'Not approved', tone: 'high' },
 } as const;
 
-function PoolView() {
+// The seeded "Toronto Solo Makers Circle": made-up members and money, real rules.
+function SampleGroup({ exploring = false }: { exploring?: boolean }) {
   const params = useSearchParams();
   const profile = useProfile();
   const gapParam = params.get('gap');
@@ -65,9 +68,17 @@ function PoolView() {
   return (
     <>
       <Card className="!bg-brand !border-brand text-white">
-        <p className="text-[13px] font-semibold text-white/80">{pool.groupName}</p>
-        <p className="display mt-2 text-[2rem] sm:text-[2.5rem]">Your group has pledged up to {money(maxGiftNow)}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-white/15 px-2.5 py-1 text-[12px] font-semibold">Sample group</span>
+          <p className="text-[13px] font-semibold text-white/80">{pool.groupName}</p>
+        </div>
+        <p className="display mt-2 text-[2rem] sm:text-[2.5rem]">
+          {exploring ? 'This' : 'Your'} group has pledged up to {money(maxGiftNow)}
+        </p>
         <p className="mt-3 text-[14px] text-white/80">
+          Made-up members and money, so you can see how a group works. The rules are real.
+        </p>
+        <p className="mt-2 text-[14px] text-white/80">
           {pool.disclaimer ??
             'BYOB never holds money. Members keep their share in their own savings and send a gift if someone needs it. Gifts, not guarantees.'}
         </p>
@@ -272,6 +283,160 @@ function PoolView() {
           ))}
         </div>
       </Card>
+    </>
+  );
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+
+// A typed-in user with no group yet.
+function NoGroup({ onCreate, onExplore }: { onCreate: () => void; onExplore: () => void }) {
+  return (
+    <Card className="text-center">
+      <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-soft text-brand">
+        <IconPool width={26} height={26} />
+      </span>
+      <h2 className="title mt-4 text-[22px] text-ink">You&apos;re not in a group yet</h2>
+      <p className="mx-auto mt-2 max-w-md text-[15px] text-ink-2">
+        A group is a few solo workers who each set a little aside and send a gift when one of you is hit by a shock.
+        Start your own, or look around the sample group first.
+      </p>
+      <div className="mx-auto mt-6 flex max-w-sm flex-col gap-3">
+        <button onClick={onCreate} className={button}>Create a group</button>
+        <button onClick={onExplore} className={buttonGhost}>Explore the sample group</button>
+      </div>
+    </Card>
+  );
+}
+
+// The user's own group: just them, nothing pledged, waiting period running.
+function OwnGroup({ group, onLeave }: { group: MyGroup; onLeave: () => void }) {
+  const profile = useProfile();
+  const [rules, setRules] = useState<Pool | null>(null);
+  const [now] = useState(() => Date.now());
+  useEffect(() => {
+    api.pool().then(setRules); // only for the rules (waiting period, max gift), not the sample's members
+  }, []);
+
+  const waitingMonths = rules?.waitingMonths ?? 3;
+  const maxGift = rules?.maxGiftPerClaim ?? 2000;
+  const waitDays = waitingMonths * 30;
+  const started = Date.parse(group.createdAt);
+  const day = Math.min(waitDays, Math.max(1, Math.floor((now - started) / DAY) + 1));
+  const askFrom = new Date(started + waitDays * DAY).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  const waiting = day < waitDays;
+
+  return (
+    <>
+      <Card className="!bg-brand !border-brand text-white">
+        <p className="text-[13px] font-semibold text-white/80">{group.name}</p>
+        <p className="display mt-2 text-[2rem] sm:text-[2.5rem]">Your group has pledged {money(0)}</p>
+        <p className="mt-3 text-[14px] text-white/80">
+          BYOB never holds money. Members keep their share in their own savings and send a gift if someone needs it. Gifts, not guarantees.
+        </p>
+      </Card>
+
+      <div className="grid grid-cols-3 gap-3">
+        <Stat label="Members" value={1} />
+        <Stat label="Max gift" value={money(maxGift)} note="Once pledges come in" />
+        <Stat label="Waiting period" value={waitingMonths} unit=" mo" note="Started today" />
+      </div>
+
+      <Card>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="title text-[19px] text-ink">Waiting period</h2>
+          <span className="text-[13px] font-medium text-ink-3">Day {day} of {waitDays}</span>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-sunken">
+          <div className="h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${(day / waitDays) * 100}%` }} />
+        </div>
+        <p className="mt-3 text-[15px] text-ink">
+          You can ask for help from <b>{askFrom}</b>.
+        </p>
+      </Card>
+
+      <Card className="space-y-3">
+        <h2 className="title text-[19px] text-ink">Request support</h2>
+        <ul className="space-y-2">
+          {waiting && (
+            <li className="flex gap-2 text-[14px] text-ink-2">
+              <IconX width={16} height={16} className="mt-0.5 shrink-0 text-rose" />
+              New members can ask for help after {waitingMonths} months.
+            </li>
+          )}
+          <li className="flex gap-2 text-[14px] text-ink-2">
+            <IconX width={16} height={16} className="mt-0.5 shrink-0 text-rose" />
+            Nothing is pledged yet, so there&apos;s nothing to gift.
+          </li>
+        </ul>
+        <button disabled className={`${button} w-full`}>Request support</button>
+      </Card>
+
+      <Card>
+        <h2 className="title mb-4 text-[19px] text-ink">Members</h2>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className="flex items-center gap-3 rounded-2xl bg-brand-soft px-3 py-2.5 ring-1 ring-brand/30">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand text-[13px] font-semibold text-white">
+              {(profile?.name ?? 'Y')[0]}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-[14px] font-semibold text-ink">{profile?.name ?? 'You'} (you)</p>
+              <p className="truncate text-[12px] text-ink-3">{profile?.business ?? 'Solo business'} · new</p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <div className="text-center">
+        <button onClick={onLeave} className="pressable text-[14px] font-semibold text-ink-3 hover:text-rose">Leave group</button>
+      </div>
+    </>
+  );
+}
+
+function PoolView() {
+  const params = useSearchParams();
+  const profile = useProfile();
+  const group = useMyGroup();
+  const [picked, setPicked] = useState<'mine' | 'sample' | null>(null);
+
+  if (!profile) return <Loading />;
+  if (isExampleProfile(profile)) return <SampleGroup />;
+
+  // Coming from a claim with no group of their own: show how the sample group would help.
+  const fromClaim = params.get('gap') !== null;
+  const view = picked ?? (group || !fromClaim ? 'mine' : 'sample');
+
+  return (
+    <>
+      <div role="tablist" aria-label="Which group" className="grid grid-cols-2 gap-1 rounded-full bg-sunken p-1">
+        {(['mine', 'sample'] as const).map((v) => (
+          <button
+            key={v}
+            role="tab"
+            aria-selected={view === v}
+            onClick={() => setPicked(v)}
+            className={`pressable rounded-full py-2.5 text-[14px] font-semibold ${view === v ? 'bg-surface text-ink shadow-[0_1px_3px_rgba(17,19,17,0.12)]' : 'text-ink-2'}`}
+          >
+            {v === 'mine' ? 'My group' : 'Sample group'}
+          </button>
+        ))}
+      </div>
+
+      {view === 'sample' ? (
+        <>
+          {fromClaim && !group && (
+            <p className="rounded-2xl bg-brand-soft p-4 text-[14px] text-ink">
+              You&apos;re not in a group yet, so here&apos;s how the sample group would handle your request.
+            </p>
+          )}
+          <SampleGroup exploring />
+        </>
+      ) : group ? (
+        <OwnGroup group={group} onLeave={() => { leaveGroup(); setPicked('mine'); }} />
+      ) : (
+        <NoGroup onCreate={() => { createGroup(profile); setPicked('mine'); }} onExplore={() => setPicked('sample')} />
+      )}
     </>
   );
 }
