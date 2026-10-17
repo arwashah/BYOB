@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { api } from '@/lib/api';
-import { useProfile } from '@/lib/useProfile';
+import { api, usedStandIn } from '@/lib/api';
+import { readResult, saveResult, useProfile } from '@/lib/useProfile';
 import type { Gap } from '@/lib/types';
 import { textDir } from '@/lib/language';
 import { Badge, Card, Loading, MESSAGES, Page, TONE, button } from '@/components/ui';
@@ -40,8 +40,21 @@ export default function GapsPage() {
   const profile = useProfile();
   const [gaps, setGaps] = useState<Gap[] | null>(null);
 
+  // The gap scan is slow (Gemini), so keep the last real answer for this exact profile.
+  // Logged-in users get it back on any device.
   useEffect(() => {
-    if (profile) api.gaps(profile).then(setGaps);
+    if (!profile) return;
+    const forProfile = JSON.stringify(profile);
+    const saved = readResult<{ forProfile: string; gaps: Gap[] }>('gaps');
+    if (saved?.forProfile === forProfile) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setGaps(saved.gaps);
+      return;
+    }
+    api.gaps(profile).then((g) => {
+      setGaps(g);
+      if (!usedStandIn('/gaps')) saveResult('gaps', { forProfile, gaps: g });
+    });
   }, [profile]);
 
   const high = gaps?.filter((g) => g.severity === 'high').length ?? 0;

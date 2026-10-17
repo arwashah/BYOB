@@ -4,10 +4,17 @@ import { useMemo, useSyncExternalStore } from "react";
 import type { Profile } from "./types";
 import { DEFAULT_EXAMPLE } from "./examples";
 
-// No logins: the current user's profile lives in this browser's localStorage.
+// The current user's profile lives in this browser's localStorage. When they're
+// logged in, lib/cloud.ts mirrors it to their Supabase row.
 const KEY = "byob-profile";
 // Onboarding in progress, so a refresh or a later visit picks up where they left off.
 const DRAFT_KEY = "byob-draft";
+// Answers worth keeping (e.g. the gap scan), so a returning user doesn't wait again.
+const RESULTS_KEY = "byob-results";
+const AUTOSAVE_PREFIX = "byob-autosave:";
+// When this browser's BYOB data last changed, so a newer local edit never loses to an older cloud copy.
+const UPDATED_KEY = "byob-updated-at";
+let restoring = false;
 
 export interface Draft {
   step: number;
@@ -25,7 +32,22 @@ function write(key: string, value: string | null) {
     if (value === null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
   } catch {}
+  if (!restoring) touchLocal();
   emit();
+}
+
+export function touchLocal() {
+  try {
+    localStorage.setItem(UPDATED_KEY, new Date().toISOString());
+  } catch {}
+}
+
+export function localUpdatedAt(): number {
+  try {
+    return Date.parse(localStorage.getItem(UPDATED_KEY) ?? "") || 0;
+  } catch {
+    return 0;
+  }
 }
 
 export function saveProfile(p: Profile) {
@@ -49,6 +71,92 @@ export function readDraft(): Draft | null {
 export function startOver() {
   write(KEY, null);
   write(DRAFT_KEY, null);
+}
+
+const readJson = <T,>(key: string): T | null => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+};
+
+export function readResult<T>(name: string): T | null {
+  return (readJson<Record<string, T>>(RESULTS_KEY) ?? {})[name] ?? null;
+}
+
+export function saveResult(name: string, value: unknown) {
+  write(RESULTS_KEY, JSON.stringify({ ...(readJson<Record<string, unknown>>(RESULTS_KEY) ?? {}), [name]: value }));
+}
+
+// Same-tab change notifications, for the cloud sync.
+export function onLocalChange(cb: () => void) {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+export interface LocalSnapshot {
+  profile: Profile | null;
+  results: Record<string, unknown>; // includes draft and autoSave so the whole state round-trips
+}
+
+const autoSaveKeys = () => {
+  try {
+    return Object.keys(localStorage).filter((k) => k.startsWith(AUTOSAVE_PREFIX));
+  } catch {
+    return [];
+  }
+};
+
+export function localSnapshot(): LocalSnapshot {
+  return {
+    profile: readJson<Profile>(KEY),
+    results: {
+      ...(readJson<Record<string, unknown>>(RESULTS_KEY) ?? {}),
+      draft: readJson<Draft>(DRAFT_KEY),
+      autoSave: autoSaveKeys().map((k) => k.slice(AUTOSAVE_PREFIX.length)),
+    },
+  };
+}
+
+// Replace this browser's copy with the cloud's. `updatedAt` is the cloud row's time.
+export function restoreLocal(s: LocalSnapshot, updatedAt?: string) {
+  const { draft, autoSave, ...results } = s.results as { draft?: Draft | null; autoSave?: string[] } & Record<string, unknown>;
+  restoring = true;
+  try {
+    clearLocal();
+    try {
+      for (const name of autoSave ?? []) localStorage.setItem(AUTOSAVE_PREFIX + name, "on");
+      if (updatedAt) localStorage.setItem(UPDATED_KEY, updatedAt);
+    } catch {}
+    write(RESULTS_KEY, JSON.stringify(results));
+    write(DRAFT_KEY, draft ? JSON.stringify(draft) : null);
+    write(KEY, s.profile && Object.keys(s.profile).length ? JSON.stringify(s.profile) : null);
+  } finally {
+    restoring = false;
+  }
+  window.dispatchEvent(new Event("byob-autosave"));
+}
+
+// Everything BYOB keeps in this browser (used on log out, so the next person starts fresh).
+export function clearLocal() {
+  const was = restoring;
+  restoring = true;
+  try {
+    try {
+      for (const k of autoSaveKeys()) localStorage.removeItem(k);
+      localStorage.removeItem(UPDATED_KEY);
+    } catch {}
+    write(RESULTS_KEY, null);
+    write(DRAFT_KEY, null);
+    write(KEY, null);
+  } finally {
+    restoring = was;
+  }
+  window.dispatchEvent(new Event("byob-autosave"));
 }
 
 const subscribe = (onChange: () => void) => {

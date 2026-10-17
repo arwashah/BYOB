@@ -59,6 +59,9 @@ function mark(path: string, usedFake: boolean) {
   listeners.forEach((l) => l());
 }
 // Called on every page change: the new screen starts with a clean slate.
+// True if this endpoint's last answer was stand-in data (so it shouldn't be saved as the user's own).
+export const usedStandIn = (path: string) => standIn.has(path.split("?")[0]);
+
 export function clearOffline() {
   standIn.clear();
   if (!offline) return;

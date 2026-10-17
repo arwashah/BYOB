@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { logOut, useAuth, useGuest } from "@/lib/cloud";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import type { Severity } from "@/lib/types";
 import { useEffect, useState } from "react";
@@ -27,9 +28,44 @@ function Header() {
           <Logo />
           <Wordmark className="text-[26px] text-ink" />
         </Link>
-        <OfflineChip />
+        <div className="flex min-w-0 items-center gap-3">
+          <OfflineChip />
+          <Account />
+        </div>
       </div>
     </header>
+  );
+}
+
+// "Logged in as … · Log out", or a Log in link for guests. Hidden when logins aren't set up.
+function Account() {
+  const auth = useAuth();
+  const router = useRouter();
+  const path = usePathname();
+  const [leaving, setLeaving] = useState(false);
+  if (!auth.enabled || path === "/login") return null;
+  if (!auth.user) {
+    return (
+      <Link href="/login" className="pressable shrink-0 rounded-full px-1 text-[13px] font-semibold text-brand">
+        Log in
+      </Link>
+    );
+  }
+  const out = async () => {
+    setLeaving(true);
+    await logOut();
+    router.push("/login");
+  };
+  return (
+    <span className="flex min-w-0 items-center gap-2 text-[13px]">
+      <span className="hidden min-w-0 max-w-[15rem] truncate text-ink-3 sm:inline">
+        Logged in as <span className="font-semibold text-ink-2">{auth.user.email}</span>
+      </span>
+      <span aria-hidden className="hidden text-ink-3 sm:inline">·</span>
+      <button onClick={out} disabled={leaving} title={auth.user.email ?? undefined} className="pressable shrink-0 font-semibold text-brand disabled:opacity-40">
+        {leaving ? "Logging out…" : "Log out"}
+      </button>
+    </span>
   );
 }
 
@@ -130,11 +166,26 @@ function TabBar() {
   );
 }
 
+// With logins switched on, a first visit goes to /login; "Try as guest" or logging in lets you through.
+function useLoginGate() {
+  const auth = useAuth();
+  const guest = useGuest();
+  const path = usePathname();
+  const router = useRouter();
+  const open = !auth.enabled || guest || path === "/login";
+  const mustLogin = !open && auth.ready && !auth.user;
+  useEffect(() => {
+    if (mustLogin) router.replace("/login");
+  }, [mustLogin, router]);
+  return !open && !auth.user; // still checking the session, or on the way to /login
+}
+
 export function Shell({ children }: { children: ReactNode }) {
+  const waiting = useLoginGate();
   return (
     <div className="min-h-screen bg-paper">
       <Header />
-      <main className="mx-auto w-full max-w-3xl px-5 pt-8 pb-36 sm:pt-12">{children}</main>
+      <main className="mx-auto w-full max-w-3xl px-5 pt-8 pb-36 sm:pt-12">{waiting ? <Loading /> : children}</main>
       <TabBar />
     </div>
   );

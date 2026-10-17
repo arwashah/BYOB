@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { touchLocal } from "./useProfile";
 
 // BYOB never touches the money: the user sets up a recurring transfer in their own
 // bank app, and ticks a box here. That tick lives only in this browser.
@@ -34,6 +35,7 @@ export function useAutoSave(name: string): [boolean, (on: boolean) => void] {
       if (value) localStorage.setItem(key(name), "on");
       else localStorage.removeItem(key(name));
     } catch {}
+    touchLocal();
     window.dispatchEvent(new Event(EVENT));
   };
   return [on, set];
