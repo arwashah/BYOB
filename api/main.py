@@ -113,43 +113,91 @@ def ask(contents, schema, file_bytes: bytes = b""):
     return result
 
 
+_backups = None
+SKIP_WORDS = ("image", "tts", "live", "audio", "embed", "native", "vision", "exp", "preview", "thinking", "omni", "latest")
+
+
+def backup_models() -> list:
+    """Other Flash models this key can use, found automatically (newest first), so a busy
+    model doesn't break the demo. GEMINI_FALLBACK_MODELS in .env overrides this."""
+    global _backups
+    configured = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS", "").split(",") if m.strip()]
+    if configured:
+        return configured
+    if _backups is None:
+        found = []
+        try:
+            for m in gemini().models.list():
+                name = (m.name or "").replace("models/", "")
+                actions = getattr(m, "supported_actions", None) or ["generateContent"]
+                if ("flash" in name and name != MODEL and "generateContent" in actions
+                        and not any(w in name for w in SKIP_WORDS)):
+                    found.append(name)
+        except Exception as err:
+            print(f"Couldn't list backup models: {str(err)[:80]}")
+        found.sort(reverse=True)  # newest version numbers first
+        found.sort(key=lambda n: "lite" in n)  # full Flash before Flash-Lite (more accurate)
+        _backups = found[:3]
+        print(f"Backup models: {_backups or 'none found'}")
+    return _backups
+
+
 def ask_gemini(contents, schema):
+    global _client
     from google.genai import types
     settings = dict(response_mime_type="application/json", response_schema=schema, temperature=0.2)
     # Less "thinking" = much faster answers. Set GEMINI_THINKING=medium in .env for more careful ones.
     thinking = os.getenv("GEMINI_THINKING", "low")
     try:
-        config = types.GenerateContentConfig(
+        fast_config = types.GenerateContentConfig(
             **settings, thinking_config=types.ThinkingConfig(thinking_level=thinking)
         )
     except Exception:  # older library without thinking levels
-        config = types.GenerateContentConfig(**settings)
+        fast_config = types.GenerateContentConfig(**settings)
     plain_config = types.GenerateContentConfig(**settings)
-    fallbacks = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS", "").split(",") if m.strip()]
+
     last_err = None
-    for model in [MODEL] + fallbacks:
-        for wait in (0, 2, 5):  # up to 3 tries per model
-            if wait:
-                time.sleep(wait)
+    models = [MODEL]
+    tried_backups = False
+    while models:
+        model = models.pop(0)
+        config = fast_config
+        waits = (0, 2, 5) if model == MODEL else (0, 3)
+        attempt = 0
+        while attempt < len(waits):
+            if waits[attempt]:
+                time.sleep(waits[attempt])
+            attempt += 1
             try:
                 response = gemini().models.generate_content(model=model, contents=contents, config=config)
+                if model != MODEL:
+                    print(f"Answered by backup model {model}")
                 return json.loads(response.text)
             except HTTPException:
                 raise
             except Exception as err:
                 last_err = err
-                if "thinking" in str(err).lower() and config is not plain_config:
+                text = str(err)
+                if "thinking" in text.lower() and config is not plain_config:
                     config = plain_config  # this model doesn't take a thinking level: drop it
+                    attempt -= 1  # doesn't count as a try
                     continue
-                if any(sign.lower() in str(err).lower() for sign in NETWORK_SIGNS):
-                    global _client
+                if any(sign.lower() in text.lower() for sign in NETWORK_SIGNS):
                     _client = None  # throw away the broken connection, make a fresh one
-                    print(f"Connection to Gemini dropped, reconnecting... ({str(err)[:80]})")
+                    print(f"Connection to Gemini dropped, reconnecting... ({text[:80]})")
                     continue
-                if not any(sign in str(err) for sign in BUSY_SIGNS):
+                if "404" in text or "NOT_FOUND" in text:
+                    print(f"Model {model} not available, skipping")
+                    break
+                if not any(sign in text for sign in BUSY_SIGNS):
                     # not a "busy" error (bad key, unreadable file...): retrying won't help
                     raise HTTPException(502, f"Gemini call failed ({model}): {err}")
-                print(f"Gemini busy on {model}, retrying... ({str(err)[:80]})")
+                print(f"Gemini busy on {model}, retrying... ({text[:80]})")
+        if not models and not tried_backups:
+            tried_backups = True
+            models = [m for m in backup_models() if m != MODEL]
+            if models:
+                print(f"{MODEL} is busy, switching to backup: {models[0]}")
     raise HTTPException(503, f"Gemini is busy right now, try again in a minute: {last_err}")
 
 
