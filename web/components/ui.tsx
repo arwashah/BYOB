@@ -21,12 +21,17 @@ const STEPS: { href: string; label: string; Icon: ComponentType<SVGProps<SVGSVGE
 ];
 
 function Header() {
+  // First thing new people see: spell out what "byob" stands for.
+  const onLogin = usePathname() === "/login";
   return (
     <header className="glass sticky z-30 border-b border-line/60" style={{ top: "env(safe-area-inset-top, 0px)" }}>
       <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-5">
-        <Link href="/" className="pressable flex items-center gap-2.5">
+        <Link href="/" className="pressable flex min-w-0 items-center gap-2.5">
           <Logo />
           <Wordmark className="text-[26px] text-ink" />
+          {onLogin && (
+            <span className="truncate border-l border-line pl-2.5 text-[14px] font-medium text-ink-2">Bring your own benefits</span>
+          )}
         </Link>
         <div className="flex min-w-0 items-center gap-3">
           <OfflineChip />
