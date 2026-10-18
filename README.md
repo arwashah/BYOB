@@ -41,7 +41,7 @@ And it's not a niche: about **2.7 million Canadians are self-employed** (roughly
 | **Check it** | A "Does this look right?" screen shows what the AI understood (each piece of equipment, its age, repairs, replacement cost, whether it's your only one). **The AI proposes, you confirm** before anything is calculated. |
 | **2. See your gaps** | What you're missing compared to an employee, most urgent first, each with *why*, concrete fixes, and the **official source** it's based on (canada.ca, ontario.ca, WSIB) with a "checked" date. |
 | **3. Plan your savings** | A 4% time-off fund (like employer vacation pay), a repair fund based on how risky your equipment is, lean-month warnings, and how many weeks off you're covered, before and after BYOB. |
-| **4. When something breaks** | Upload **your own** insurance policy. BYOB works out what's covered step by step, **quotes the exact clauses**, lists the documents you need, gives the deadline, and drafts the claim letter. Then a recovery plan: insurance → your repair fund → your group → a backup plan. Works with no insurance too, and **says "Not covered" when the policy doesn't cover it** (insurer pays $0, never a guessed number). |
+| **4. When something breaks** | Upload **your own** insurance policy. BYOB works out what's covered step by step, **quotes the exact clauses**, lists the documents you need, gives the deadline, and drafts the claim letter. Then a recovery plan: insurance → your repair fund → your group → a backup plan. Works with no insurance too, and **says "Not covered" when the policy doesn't cover it**. |
 | **5. Your support pool** *(optional)* | A small group of solo workers who pledge gifts to each other. **BYOB never holds money.** Gifts, not guarantees, with waiting periods, caps and a "what if 3 people claim at once" check. |
 | **6. Burnout nudge** | Flags long stretches of 6-day weeks and shows how much time off your fund can cover. |
 
@@ -71,7 +71,7 @@ And it's not a niche: about **2.7 million Canadians are self-employed** (roughly
 - **Grounded AI.** Gemini may only use facts from [`api/rules.md`](api/rules.md), checked against official government pages. Every gap links to its source. The AI picks *which* source; the link comes from our code, so it can't invent one.
 - **Fixed answer shapes.** Gemini fills a strict schema, so any user, any language and any insurer's wording come back in the same format.
 - **AI for understanding, code for maths.** Savings, risk scores and the pool are plain, tested Python. Exact numbers never depend on the AI.
-- **No made-up money numbers.** If the AI can't read a policy, the app says "try again" rather than guessing a payout. A "not covered" answer always pays $0, and the insurer amount can never exceed the repair cost.
+- **No made-up money numbers.** If the AI can't read a policy, the app says "try again" rather than guessing a payout. The insurer amount can never exceed the repair cost.
 - **The user stays in control.** Anything the AI understood is shown on a confirm screen and can be edited before it's used.
 - **Built to survive a live demo.** Retries when Gemini is busy, automatic backup models, reconnects on dropped Wi-Fi, saved answers for instant repeats, and offline fallback screens.
 
