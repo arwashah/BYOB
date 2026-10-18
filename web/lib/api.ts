@@ -42,7 +42,19 @@ import {
   type RawWhatIf,
 } from "./adapters";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+// The live AI server. Used when NEXT_PUBLIC_API_URL is missing, and on the
+// live site when it points at localhost (which only exists on a laptop).
+const RENDER_API = "https://byob-api-b9cn.onrender.com";
+const isLocal = (s: string) => /localhost|127\.0\.0\.1/.test(s);
+
+function pickApiUrl(): string {
+  // Trailing slashes removed so paths never become "//profile".
+  const set = (process.env.NEXT_PUBLIC_API_URL || RENDER_API).trim().replace(/\/+$/, "");
+  if (typeof window !== "undefined" && isLocal(set) && !isLocal(window.location.hostname)) return RENDER_API;
+  return set;
+}
+
+const API_URL = pickApiUrl();
 
 // ---- stand-in flag: true while any endpoint on this screen answered with fake data ----
 // Tracked per endpoint, so a later call that works can't hide one that didn't.
