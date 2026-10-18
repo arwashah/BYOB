@@ -147,7 +147,7 @@ export default function OnboardingPage() {
           </div>
         )}
         <section className="rise pt-2 sm:pt-8">
-          <h1 className="display text-[2.6rem] text-ink sm:text-[4.75rem]">
+          <h1 className="display text-[2.25rem] text-ink sm:text-[3.5rem]">
             Get the benefits <br className="hidden sm:block" />
             of an employer.
             <span className="mt-1 block text-brand">
@@ -161,7 +161,7 @@ export default function OnboardingPage() {
             e.preventDefault();
             describe();
           }}
-          className="rise mt-10 rounded-2xl border border-line bg-surface p-2 shadow-[0_12px_40px_rgba(17,19,17,0.08)] focus-within:border-brand/60"
+          className="rise mt-8 rounded-2xl border border-line bg-surface p-2 shadow-[0_12px_40px_rgba(17,19,17,0.08)] focus-within:border-brand/60"
         >
           <label htmlFor="describe" className="sr-only">Describe your business</label>
           <textarea
