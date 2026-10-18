@@ -182,11 +182,15 @@ function useLoginGate() {
 
 export function Shell({ children }: { children: ReactNode }) {
   const waiting = useLoginGate();
+  // The login screen stays focused on one task: no step tabs underneath it.
+  const onLogin = usePathname() === "/login";
   return (
     <div className="min-h-screen bg-paper">
       <Header />
-      <main className="mx-auto w-full max-w-3xl px-5 pt-8 pb-36 sm:pt-12">{waiting ? <Loading /> : children}</main>
-      <TabBar />
+      <main className={`mx-auto w-full max-w-3xl px-5 pt-8 sm:pt-12 ${onLogin ? "pb-16" : "pb-36"}`}>
+        {waiting ? <Loading /> : children}
+      </main>
+      {!onLogin && <TabBar />}
     </div>
   );
 }
