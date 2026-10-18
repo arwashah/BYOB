@@ -6,7 +6,9 @@ BYOB is a safety net for self-employed Canadians. It finds what an employer woul
 
 Built at **Hack the Valley 11** (October 2026).
 
-**Live AI server:** [byob-api-b9cn.onrender.com](https://byob-api-b9cn.onrender.com) · [API docs](https://byob-api-b9cn.onrender.com/docs) *(free hosting: the first load can take about a minute to wake up)*
+**Try it live: [byobservices.biz](https://byobservices.biz)**
+AI server: [byob-api-b9cn.onrender.com](https://byob-api-b9cn.onrender.com) · [API docs](https://byob-api-b9cn.onrender.com/docs)
+*(Free hosting: the first request after a quiet spell can take about 50 seconds while the server wakes up.)*
 
 > ⚠️ BYOB informs, never sells. It is not financial, legal or insurance advice.
 
@@ -27,6 +29,8 @@ When you go solo, you lose everything an employer quietly provides:
 
 One shock (getting sick, a new baby, a broken oven) can mean **zero income and a big bill at the same time.**
 
+And it's not a niche: about **2.7 million Canadians are self-employed** (roughly 13% of workers), and about **700,000** did digital gig work in 2024 (Statistics Canada). A government evaluation found only about **1 in 4** self-employed people knew they could opt into EI (2010–2013 data).
+
 ---
 
 ## What it does
@@ -34,13 +38,16 @@ One shock (getting sick, a new baby, a broken oven) can mean **zero income and a
 | Step | What happens |
 |---|---|
 | **1. Describe your business** | Type it like you'd tell a friend, in **any language**. AI builds your profile: income by season, equipment, insurance, life events. Or start from an example (Maya the baker, Dev the photographer, Priya the courier). |
+| **Check it** | A "Does this look right?" screen shows what the AI understood (each piece of equipment, its age, repairs, replacement cost, whether it's your only one). **The AI proposes, you confirm** before anything is calculated. |
 | **2. See your gaps** | What you're missing compared to an employee, most urgent first, each with *why*, concrete fixes, and the **official source** it's based on (canada.ca, ontario.ca, WSIB) with a "checked" date. |
 | **3. Plan your savings** | A 4% time-off fund (like employer vacation pay), a repair fund based on how risky your equipment is, lean-month warnings, and how many weeks off you're covered, before and after BYOB. |
-| **4. When something breaks** | Upload **your own** insurance policy. BYOB works out what's covered step by step, **quotes the exact clauses**, lists the documents you need, gives the deadline, and drafts the claim letter. Then a recovery plan: insurance → your repair fund → your group → a backup plan. Works with no insurance too. |
+| **4. When something breaks** | Upload **your own** insurance policy. BYOB works out what's covered step by step, **quotes the exact clauses**, lists the documents you need, gives the deadline, and drafts the claim letter. Then a recovery plan: insurance → your repair fund → your group → a backup plan. Works with no insurance too, and **says "Not covered" when the policy doesn't cover it** (insurer pays $0, never a guessed number). |
 | **5. Your support pool** *(optional)* | A small group of solo workers who pledge gifts to each other. **BYOB never holds money.** Gifts, not guarantees, with waiting periods, caps and a "what if 3 people claim at once" check. |
 | **6. Burnout nudge** | Flags long stretches of 6-day weeks and shows how much time off your fund can cover. |
 
 **Example:** Maya's 6-year-old deck oven breaks ($6,000). BYOB reads her policy and works out the insurer pays **$3,500** (70% age rule → capped at $4,000 → minus a $500 deductible), quoting each clause. Her repair fund covers $500 and her group pledges $2,000.
+
+**And when the answer is no:** a photographer's broken cameras checked against that same oven policy come back **Not covered**: BYOB quotes the clause listing only the deck oven as insured, shows $0 from the insurer and $2,000 left to plan for, in French because the user wrote in French.
 
 ---
 
@@ -64,7 +71,8 @@ One shock (getting sick, a new baby, a broken oven) can mean **zero income and a
 - **Grounded AI.** Gemini may only use facts from [`api/rules.md`](api/rules.md), checked against official government pages. Every gap links to its source. The AI picks *which* source; the link comes from our code, so it can't invent one.
 - **Fixed answer shapes.** Gemini fills a strict schema, so any user, any language and any insurer's wording come back in the same format.
 - **AI for understanding, code for maths.** Savings, risk scores and the pool are plain, tested Python. Exact numbers never depend on the AI.
-- **No made-up money numbers.** If the AI can't read a policy, the app says "try again" rather than guessing a payout.
+- **No made-up money numbers.** If the AI can't read a policy, the app says "try again" rather than guessing a payout. A "not covered" answer always pays $0, and the insurer amount can never exceed the repair cost.
+- **The user stays in control.** Anything the AI understood is shown on a confirm screen and can be edited before it's used.
 - **Built to survive a live demo.** Retries when Gemini is busy, automatic backup models, reconnects on dropped Wi-Fi, saved answers for instant repeats, and offline fallback screens.
 
 ---
@@ -134,7 +142,19 @@ npm run dev
 
 Open **http://localhost:3000** and click an example, or describe your own business.
 
-> If the server isn't running, the screens fall back to offline demo data and show an "Offline demo data" label.
+> If the server isn't reachable, the screens fall back to offline demo data and show an "Offline demo data" label. The claim step never falls back: a made-up payout would be a wrong money number, so it asks you to retry instead.
+
+### 4. Deploying
+
+| Where | Setting | Value |
+|---|---|---|
+| **Render** (AI server, root `api`, start `uvicorn main:app --host 0.0.0.0 --port $PORT`) | `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS` | as in `api/.env` |
+| | `FRONTEND_URL` | your site's addresses, comma-separated, no trailing `/` (e.g. `https://byobservices.biz,https://www.byobservices.biz`) |
+| **Vercel** (screens, root directory `web`) | `NEXT_PUBLIC_API_URL` | `https://byob-api-b9cn.onrender.com` (no trailing `/`) |
+| | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | from Supabase (publishable key only, never the secret key) |
+| **Supabase** | Authentication → URL Configuration | Site URL and redirect URLs = your live site |
+
+`NEXT_PUBLIC_` values are built into the site, so **redeploy on Vercel after changing them**. As a safety net, the live site always uses the Render server if `NEXT_PUBLIC_API_URL` is missing or points at `localhost`.
 
 ### 3. Tests
 
@@ -158,6 +178,7 @@ python -m pytest tests
 | `GET` | `/pool` | The support group's status and health |
 | `POST` | `/pool/request` | Ask your group for a gift (checks waiting period, caps, reserve) |
 | `GET` | `/pool/whatif` | Can the group survive several claims at once? |
+| `POST` | `/pool/reset` | Reset the demo group to a clean slate |
 | `POST` | `/nudge` | Burnout check from days worked |
 | `GET` | `/health` | Server status |
 
@@ -204,6 +225,8 @@ web/
 - More provinces beyond Ontario
 - Upload invoices to forecast from real income
 - A paid AI tier so real users' documents stay private
+- Leave unknown profile values blank instead of starting guesses
+- Calendar reminders for EI registration, CPP at tax time and fund top-ups
 
 ---
 
