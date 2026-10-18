@@ -21,17 +21,18 @@ const STEPS: { href: string; label: string; Icon: ComponentType<SVGProps<SVGSVGE
 ];
 
 function Header() {
-  // First thing new people see: spell out what "byob" stands for.
-  const onLogin = usePathname() === "/login";
+  // On phones the tagline gives way to the "offline" chip when that's showing.
+  const offline = useOffline();
   return (
-    <header className="glass sticky z-30 border-b border-line/60" style={{ top: "env(safe-area-inset-top, 0px)" }}>
-      <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-5">
+    <header className="sticky z-30 border-b border-line/60 bg-surface" style={{ top: "env(safe-area-inset-top, 0px)" }}>
+      <div className="mx-auto flex h-14 max-w-3xl items-center justify-between gap-3 px-5">
         <Link href="/" className="pressable flex min-w-0 items-center gap-2.5">
           <Logo />
           <Wordmark className="text-[26px] text-ink" />
-          {onLogin && (
-            <span className="truncate border-l border-line pl-2.5 text-[14px] font-medium text-ink-2">Bring your own benefits</span>
-          )}
+          {/* Spell out what "byob" stands for */}
+          <span className={`truncate border-l border-line pl-2.5 text-[14px] font-medium text-ink-2 ${offline ? "hidden sm:block" : ""}`}>
+            Bring your own benefits
+          </span>
         </Link>
         <div className="flex min-w-0 items-center gap-3">
           <OfflineChip />
@@ -79,12 +80,12 @@ function OfflineChip() {
   const offline = useOffline();
   const path = usePathname();
   useEffect(() => clearOffline(), [path]);
-  if (!offline) return <span className="hidden text-xs text-ink-3 sm:block">Informs, never sells · Not financial advice</span>;
+  if (!offline) return null;
   return (
     <span
       role="status"
       title="The server didn't answer part of this screen, so it shows sample numbers."
-      className="inline-flex items-center gap-1.5 rounded-full bg-honey-soft px-3 py-1 text-xs font-semibold text-honey"
+      className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-honey-soft px-3 py-1 text-xs font-semibold text-honey"
     >
       <span className="h-1.5 w-1.5 rounded-full bg-honey" />
       Offline demo data
@@ -109,7 +110,7 @@ export function Chip({ tone, children }: { tone: Severity; children: ReactNode }
 }
 
 // iOS-style tab bar: separate tabs, each with its own icon, floating on a
-// translucent material so content scrolls underneath. Until onboarding is done
+// solid surface so text scrolling underneath never shows through. Until onboarding is done
 // the later tabs are greyed out and point back to Start.
 function TabBar() {
   const path = usePathname();
@@ -132,7 +133,7 @@ function TabBar() {
           Start here first: describe your business
         </p>
       )}
-      <ul className="glass mx-auto grid max-w-md grid-cols-5 gap-1 rounded-2xl border border-line/70 p-1.5 shadow-[0_8px_30px_rgba(17,19,17,0.12)]">
+      <ul className="mx-auto grid max-w-md grid-cols-5 gap-1 rounded-2xl border border-line/70 bg-surface p-1.5 shadow-[0_8px_30px_rgba(17,19,17,0.12)]">
         {STEPS.map(({ href, label, Icon }) => {
           const active = path === href;
           if (locked && href !== "/") {
