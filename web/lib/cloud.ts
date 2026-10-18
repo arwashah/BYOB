@@ -206,9 +206,10 @@ export async function continueWithGoogle() {
 export async function logOut() {
   if (!supabase) return;
   clearTimeout(pushTimer);
-  if (syncedFor) await push(syncedFor); // save the latest changes first
+  // Save the latest changes first, but never let a slow network stop the log out
+  if (syncedFor) await Promise.race([push(syncedFor).catch(() => {}), new Promise((r) => setTimeout(r, 3000))]);
   syncedFor = null;
-  await supabase.auth.signOut();
+  await supabase.auth.signOut().catch(() => {});
   clearLocal(); // shared device: the next person shouldn't see this user's data
   setOwner(null);
   setGuest(false); // the next visit starts at the login page again

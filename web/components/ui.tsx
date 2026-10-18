@@ -57,10 +57,16 @@ function Account() {
       </Link>
     );
   }
+  // The header stays mounted across pages, so reset the button once we're done;
+  // otherwise it's still stuck on "Logging out…" the next time someone logs in.
   const out = async () => {
     setLeaving(true);
-    await logOut();
-    router.push("/login");
+    try {
+      await logOut();
+      router.push("/login");
+    } finally {
+      setLeaving(false);
+    }
   };
   return (
     <span className="flex min-w-0 items-center gap-2 text-[13px]">
